@@ -399,7 +399,7 @@ UTILITIES: ${JSON.stringify(allData.utilities)}
 
 Answer the user's question. For amounts, use ₹ symbol. Be specific with numbers and names. If listing items, use a short formatted list. Today's date context: ${new Date().toLocaleDateString('en-IN')}.`;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${cfg.geminiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
