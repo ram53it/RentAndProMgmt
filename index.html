@@ -524,7 +524,7 @@ function Properties({ data, onRefresh }) {
     setMode({ editing: p._row, utilRow: u._row, propId: p.ID });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (withReceipt = false) => {
     if (!form.Name || !form['Rent Amount']) { alert('Property name and rent amount required.'); return; }
     setSaving(true);
     try {
@@ -653,7 +653,7 @@ function Tenants({ data, onRefresh }) {
   const openAdd  = () => { setForm(blank); setMode('add'); };
   const openEdit = (t) => { setForm({...blank,...t}); setMode({editing:t._row, id:t.ID}); };
 
-  const handleSave = async () => {
+  const handleSave = async (withReceipt = false) => {
     if (!form['Property ID'] || !form.Name || !form.Phone) { alert('Property, name and phone required.'); return; }
     setSaving(true);
     try {
@@ -902,7 +902,7 @@ function Rent({ data, onRefresh }) {
     setForm(p=>({...p, selectedMonths:updated, totalAmount: total||''}));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (withReceipt = false) => {
     if (!form['Property ID'] || form.selectedMonths.length===0 || !form.perMonthAmount) {
       alert('Select property, at least one month, and per-month amount.'); return;
     }
@@ -934,7 +934,7 @@ function Rent({ data, onRefresh }) {
       };
       setMode(null);
       onRefresh();
-      setReceipt(receiptData);
+      if (withReceipt) setReceipt(receiptData);
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
@@ -1048,7 +1048,8 @@ function Rent({ data, onRefresh }) {
           </div>
 
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Save & Generate Receipt'}</button>
+            <button className="btn btn-primary" onClick={()=>handleSave(false)} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Save'}</button>
+            <button className="btn btn-primary" style={{background:'#25d366'}} onClick={()=>handleSave(true)} disabled={saving}>🧾 Save &amp; Generate Receipt</button>
             <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
           </div>
         </div>
@@ -1141,7 +1142,7 @@ function Maintenance({ data, onRefresh }) {
   const openAdd  = () => { setForm(blank); setMode('add'); };
   const openEdit = (m) => { setForm({...blank,...m}); setMode({editing:m._row, id:m.ID}); };
 
-  const handleSave = async () => {
+  const handleSave = async (withReceipt = false) => {
     if (!form['Property ID']||!form.Description||!form.Amount) { alert('Property, description and amount required.'); return; }
     setSaving(true);
     try {
