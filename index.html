@@ -166,6 +166,52 @@
     .gap-12 { display: flex; flex-direction: column; gap: 12px; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .sidebar { width: 56px; } .sidebar .sidebar-logo h1, .sidebar .nav-item span, .nav-section-label, .sidebar-logo p, .sidebar-footer { display: none; } .nav-item { justify-content: center; padding: 10px; } }
+
+    /* PIN screen */
+    .pin-screen { position: fixed; inset: 0; background: var(--navy); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .pin-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px 32px; width: 100%; max-width: 380px; text-align: center; }
+    .pin-logo { width: 48px; height: 48px; background: var(--accent); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    .pin-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .pin-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5; }
+    .pin-dots { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; }
+    .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); transition: all .15s; }
+    .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+    .pin-dot.error { background: var(--red); border-color: var(--red); }
+    .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .pin-key { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 18px; font-weight: 500; cursor: pointer; color: var(--text-primary); transition: all .15s; font-family: var(--mono); }
+    .pin-key:hover { background: var(--navy-light); border-color: var(--accent); }
+    .pin-key:active { transform: scale(.95); }
+    .pin-key.del { font-size: 14px; color: var(--text-muted); }
+    .pin-error { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 18px; }
+    .pin-setup-form { text-align: left; }
+    .pin-setup-form .form-group { margin-bottom: 12px; }
+    .pin-toggle { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 12px; display: inline-block; }
+
+    /* Receipt modal */
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px; }
+    .modal-box { background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto; }
+    .modal-actions { display:flex;gap:10px;padding:16px;border-top:1px solid #e5e7eb;background:#fff;border-radius:0 0 16px 16px; }
+
+    /* Receipt content — white/print styling */
+    .receipt-wrap { background:#fff;color:#111;padding:32px 28px;font-family:'Inter',sans-serif; }
+    .receipt-title { text-align:center;font-size:26px;font-weight:800;letter-spacing:.04em;color:#111;margin-bottom:4px; }
+    .receipt-emoji { text-align:center;font-size:32px;margin-bottom:6px; }
+    .receipt-divider { border:none;border-top:2px solid #111;margin:16px 0; }
+    .receipt-divider-light { border:none;border-top:1px dashed #ccc;margin:8px 0; }
+    .receipt-label { font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px; }
+    .receipt-value { font-size:15px;color:#111;margin-bottom:12px; }
+    .receipt-row { display:flex;justify-content:space-between;align-items:center;padding:8px 0; }
+    .receipt-row-label { font-size:14px;color:#555; }
+    .receipt-row-value { font-size:14px;font-weight:700;color:#111; }
+    .receipt-amount-box { background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:18px;text-align:center;margin:16px 0; }
+    .receipt-amount-label { font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px; }
+    .receipt-amount-value { font-size:36px;font-weight:800;color:#15803d; }
+    .receipt-footer { text-align:center;font-size:12px;color:#888;margin-top:8px;line-height:1.8; }
+
+    /* Multi-month selector */
+    .month-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px; }
+    .month-chip { padding:6px 4px;border-radius:6px;border:1px solid var(--border);font-size:12px;text-align:center;cursor:pointer;background:var(--navy);color:var(--text-muted);transition:all .15s; }
+    .month-chip.selected { background:var(--accent-light);border-color:var(--accent);color:var(--accent);font-weight:500; }
   </style>
 </head>
 <body>
@@ -174,17 +220,71 @@
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ── CONFIG ────────────────────────────────────────────────────────────────────
-// Paste your values here after following the Setup page instructions
-const CONFIG_KEY = 'pm_config';
-const getConfig = () => {
-  try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); } catch { return {}; }
+// ── CONFIG — PIN-encrypted localStorage ──────────────────────────────────────
+// Keys are AES-GCM encrypted with your PIN before being stored.
+// Nothing sensitive is ever in the source code.
+const STORE_KEY = 'pm_enc_config';
+const TOKEN_KEY = 'pm_access_token';
+
+async function deriveKey(pin) {
+  const enc = new TextEncoder();
+  const raw = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('pm-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptConfig(pin, data) {
+  const key = await deriveKey(pin);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
+  const buf = new Uint8Array(iv.byteLength + cipher.byteLength);
+  buf.set(iv, 0); buf.set(new Uint8Array(cipher), iv.byteLength);
+  return btoa(String.fromCharCode(...buf));
+}
+
+async function decryptConfig(pin, b64) {
+  try {
+    const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = buf.slice(0, 12), data = buf.slice(12);
+    const key = await deriveKey(pin);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return JSON.parse(new TextDecoder().decode(plain));
+  } catch { return null; }
+}
+
+function hasEncryptedConfig() { return !!localStorage.getItem(STORE_KEY); }
+
+async function loadConfig(pin) {
+  const b64 = localStorage.getItem(STORE_KEY);
+  if (!b64) return null;
+  const cfg = await decryptConfig(pin, b64);
+  return cfg;
+}
+
+async function persistConfig(pin, cfg) {
+  const toStore = { spreadsheetId: cfg.spreadsheetId, clientId: cfg.clientId, geminiKey: cfg.geminiKey };
+  const enc = await encryptConfig(pin, toStore);
+  localStorage.setItem(STORE_KEY, enc);
+}
+
+// Runtime config — set after PIN unlock, never written to source
+let _runtimeConfig = null;
+const getConfig = () => ({ ...(_runtimeConfig || {}), accessToken: localStorage.getItem(TOKEN_KEY) || null });
+const saveConfig = (cfg) => {
+  if (cfg.accessToken !== undefined) {
+    if (cfg.accessToken) localStorage.setItem(TOKEN_KEY, cfg.accessToken);
+    else localStorage.removeItem(TOKEN_KEY);
+  }
 };
-const saveConfig = (cfg) => localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+const setRuntimeConfig = (cfg) => { _runtimeConfig = cfg; };
 
 // ── GOOGLE SHEETS API ─────────────────────────────────────────────────────────
 const SHEETS = {
@@ -240,8 +340,8 @@ async function updateRow(sheetName, rowNum, values, numCols) {
 // Initialize sheet headers if sheets are empty
 async function initSheets() {
   const headers = {
-    Properties: ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Notes', 'Created'],
-    Tenants: ['ID', 'Property ID', 'Name', 'Phone', 'Email', 'Advance', 'Move In Date', 'Status', 'Notes'],
+    Properties: ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Occupancy', 'Notes', 'Created'],
+    Tenants: ['ID', 'Property ID', 'Name', 'Phone', 'Email', 'Advance', 'Move In Date', 'Status', 'Notes', 'Last Rent Revision'],
     Rent: ['ID', 'Property ID', 'Tenant ID', 'Month', 'Year', 'Amount', 'Paid Date', 'Status', 'Notes'],
     Maintenance: ['ID', 'Property ID', 'Date', 'Description', 'Amount', 'Vendor', 'Category'],
     Utilities: ['Property ID', 'Electricity Number', 'Property Tax Number', 'Water Bill Number', 'Notes'],
@@ -273,8 +373,7 @@ function parseTokenFromHash() {
   const hash = new URLSearchParams(window.location.hash.slice(1));
   const token = hash.get('access_token');
   if (token) {
-    const cfg = getConfig();
-    saveConfig({ ...cfg, accessToken: token });
+    localStorage.setItem(TOKEN_KEY, token);
     window.history.replaceState({}, '', window.location.pathname);
     return token;
   }
@@ -331,727 +430,1084 @@ const Icon = ({ name, size = 16 }) => {
 
 // ── PAGES ─────────────────────────────────────────────────────────────────────
 
-// Dashboard
+// ── SHARED HELPERS ────────────────────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const YEARS  = ['2022','2023','2024','2025','2026','2027'];
+const fmtINR = (v) => '₹' + Number(v||0).toLocaleString('en-IN');
+
+// Inline edit row for tables
+function EditBtn({ onClick }) {
+  return <button className="btn btn-secondary btn-sm" onClick={onClick} title="Edit">✏️</button>;
+}
+function SaveBtn({ onClick, saving }) {
+  return <button className="btn btn-primary btn-sm" onClick={onClick} disabled={saving}>{saving?'…':'Save'}</button>;
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({ data, loading }) {
   const now = new Date();
   const currentMonth = now.toLocaleString('en-IN', { month: 'long' });
-  const currentYear = now.getFullYear();
+  const currentYear  = now.getFullYear();
 
-  const totalProperties = data.properties.length;
+  const totalProperties    = data.properties.length;
   const activeTenantsCount = data.tenants.filter(t => t.Status === 'Active').length;
+  const vacantCount        = data.properties.filter(p => p['Occupancy'] === 'Vacant').length;
 
-  const thisMonthRent = data.rent.filter(r => r.Month === currentMonth && String(r.Year) === String(currentYear));
-  const collectedAmount = thisMonthRent.filter(r => r.Status === 'Paid').reduce((s, r) => s + Number(r.Amount || 0), 0);
-  const pendingCount = totalProperties - thisMonthRent.filter(r => r.Status === 'Paid').length;
-
-  const maintenanceTotal = data.maintenance.reduce((s, m) => s + Number(m.Amount || 0), 0);
+  const thisMonthRent   = data.rent.filter(r => r.Month === currentMonth && String(r.Year) === String(currentYear));
+  const collectedAmount = thisMonthRent.filter(r => r.Status === 'Paid').reduce((s,r) => s + Number(r.Amount||0), 0);
+  const pendingCount    = totalProperties - thisMonthRent.filter(r => r.Status === 'Paid').length;
+  const maintenanceTotal= data.maintenance.reduce((s,m) => s + Number(m.Amount||0), 0);
 
   return (
     <div>
       <div className="stats-row">
-        <div className="stat-card">
-          <div className="stat-label">Properties</div>
-          <div className="stat-value">{totalProperties}</div>
-          <div className="stat-sub">Total registered</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Active Tenants</div>
-          <div className="stat-value green">{activeTenantsCount}</div>
-          <div className="stat-sub">Currently occupied</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Rent Collected — {currentMonth}</div>
-          <div className="stat-value green">₹{collectedAmount.toLocaleString('en-IN')}</div>
-          <div className="stat-sub">{thisMonthRent.filter(r=>r.Status==='Paid').length} of {totalProperties} properties</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Pending Rent</div>
-          <div className="stat-value" style={{color: pendingCount > 0 ? 'var(--red)' : 'var(--green)'}}>{pendingCount}</div>
-          <div className="stat-sub">Properties not paid</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Maintenance Spent</div>
-          <div className="stat-value gold">₹{maintenanceTotal.toLocaleString('en-IN')}</div>
-          <div className="stat-sub">All time</div>
-        </div>
+        <div className="stat-card"><div className="stat-label">Properties</div><div className="stat-value">{totalProperties}</div><div className="stat-sub">{vacantCount} vacant</div></div>
+        <div className="stat-card"><div className="stat-label">Active Tenants</div><div className="stat-value green">{activeTenantsCount}</div><div className="stat-sub">Currently occupied</div></div>
+        <div className="stat-card"><div className="stat-label">Rent Collected — {currentMonth}</div><div className="stat-value green">{fmtINR(collectedAmount)}</div><div className="stat-sub">{thisMonthRent.filter(r=>r.Status==='Paid').length} of {totalProperties} properties</div></div>
+        <div className="stat-card"><div className="stat-label">Pending Rent</div><div className="stat-value" style={{color:pendingCount>0?'var(--red)':'var(--green)'}}>{pendingCount}</div><div className="stat-sub">Properties not paid</div></div>
+        <div className="stat-card"><div className="stat-label">Maintenance Spent</div><div className="stat-value gold">{fmtINR(maintenanceTotal)}</div><div className="stat-sub">All time</div></div>
       </div>
-
       <div className="two-col">
         <div className="card">
           <div className="card-title">Properties Overview</div>
-          {loading ? <div style={{color:'var(--text-muted)',fontSize:13}}>Loading...</div> :
-          data.properties.length === 0 ? <div className="empty"><p>No properties yet. Add your first property.</p></div> :
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Property</th><th>Tenant</th><th>Rent</th><th>Status</th></tr></thead>
-              <tbody>
-                {data.properties.map(p => {
-                  const tenant = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
-                  const paid = data.rent.find(r => r['Property ID'] === p.ID && r.Month === currentMonth && String(r.Year) === String(currentYear) && r.Status === 'Paid');
-                  return (
-                    <tr key={p.ID}>
-                      <td className="name">{p.Name}</td>
-                      <td>{tenant ? tenant.Name : <span style={{color:'var(--text-muted)'}}>Vacant</span>}</td>
-                      <td className="mono">₹{Number(p['Rent Amount']||0).toLocaleString('en-IN')}</td>
-                      <td><span className={`badge ${paid ? 'badge-green' : 'badge-red'}`}>{paid ? 'Paid' : 'Pending'}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>}
+          {data.properties.length === 0 ? <div className="empty"><p>No properties yet.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Property</th><th>Tenant</th><th>Rent</th><th>Occupancy</th><th>Rent Status</th></tr></thead>
+            <tbody>{data.properties.map(p => {
+              const tenant = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
+              const paid   = data.rent.find(r => r['Property ID'] === p.ID && r.Month === currentMonth && String(r.Year) === String(currentYear) && r.Status === 'Paid');
+              const vacant = p.Occupancy === 'Vacant';
+              return (<tr key={p.ID}>
+                <td className="name">{p.Name}</td>
+                <td>{tenant ? tenant.Name : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                <td className="mono">{fmtINR(p['Rent Amount'])}</td>
+                <td><span className={`badge ${vacant?'badge-gold':'badge-green'}`}>{p.Occupancy||'Occupied'}</span></td>
+                <td><span className={`badge ${paid?'badge-green':'badge-red'}`}>{vacant?'N/A':paid?'Paid':'Pending'}</span></td>
+              </tr>);
+            })}</tbody>
+          </table></div>}
         </div>
-
         <div className="card">
           <div className="card-title">Recent Maintenance</div>
           {data.maintenance.length === 0 ? <div className="empty"><p>No maintenance records yet.</p></div> :
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Property</th><th>Description</th><th>Amount</th></tr></thead>
-              <tbody>
-                {data.maintenance.slice(-6).reverse().map((m, i) => {
-                  const prop = data.properties.find(p => p.ID === m['Property ID']);
-                  return (
-                    <tr key={i}>
-                      <td>{prop ? prop.Name : m['Property ID']}</td>
-                      <td>{m.Description}</td>
-                      <td className="mono">₹{Number(m.Amount||0).toLocaleString('en-IN')}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>}
+          <div className="table-wrap"><table>
+            <thead><tr><th>Property</th><th>Description</th><th>Amount</th></tr></thead>
+            <tbody>{[...data.maintenance].reverse().slice(0,6).map((m,i) => {
+              const prop = data.properties.find(p => p.ID === m['Property ID']);
+              return (<tr key={i}><td>{prop?prop.Name:m['Property ID']}</td><td>{m.Description}</td><td className="mono">{fmtINR(m.Amount)}</td></tr>);
+            })}</tbody>
+          </table></div>}
         </div>
       </div>
     </div>
   );
 }
 
-// Properties Page
+// ── PROPERTIES ───────────────────────────────────────────────────────────────
 function Properties({ data, onRefresh }) {
-  const [showForm, setShowForm] = useState(false);
+  const [mode, setMode]     = useState(null); // null | 'add' | {editing: row}
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ ID: '', Name: '', Address: '', Type: 'Apartment', 'Rent Amount': '', Notes: '' });
+  const blank = { ID:'', Name:'', Address:'', Type:'Apartment', 'Rent Amount':'', Occupancy:'Occupied', Notes:'',
+    ebNum:'', taxNum:'', waterNum:'',
+    tName:'', tPhone:'', tEmail:'', tAdvance:'', tMoveIn:'', tNotes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p => ({...p, [k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (p) => {
+    const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+    setForm({ ...blank, ...p, ebNum: u['Electricity Number']||'', taxNum: u['Property Tax Number']||'', waterNum: u['Water Bill Number']||'' });
+    setMode({ editing: p._row, utilRow: u._row, propId: p.ID });
+  };
 
   const handleSave = async () => {
-    if (!form.Name || !form['Rent Amount']) { alert('Property name and rent amount are required.'); return; }
+    if (!form.Name || !form['Rent Amount']) { alert('Property name and rent amount required.'); return; }
     setSaving(true);
     try {
-      const id = form.ID || `P${Date.now()}`;
-      await appendRow('Properties', [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Notes, new Date().toLocaleDateString('en-IN')]);
-      // Also create utilities row
-      await appendRow('Utilities', [id, '', '', '', '']);
-      setShowForm(false);
-      setForm({ ID: '', Name: '', Address: '', Type: 'Apartment', 'Rent Amount': '', Notes: '' });
-      onRefresh();
-    } catch (e) { alert('Error: ' + e.message); }
+      const id = (mode==='add') ? `P${Date.now()}` : form.ID;
+
+      if (mode === 'add') {
+        await appendRow('Properties', [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, new Date().toLocaleDateString('en-IN')]);
+        // utilities row
+        await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', '']);
+        // optional tenant
+        if (form.tName && form.tPhone) {
+          await appendRow('Tenants', [`T${Date.now()}`, id, form.tName, form.tPhone, form.tEmail||'', form.tAdvance||'', form.tMoveIn||'', 'Active', form.tNotes||'', '']);
+        }
+      } else {
+        // update property row
+        await updateRow('Properties', mode.editing, [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, form.Created||''], 8);
+        // update or create utilities row
+        if (mode.utilRow) {
+          await updateRow('Utilities', mode.utilRow, [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', ''], 5);
+        } else {
+          await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', '']);
+        }
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
+
+  const isEditing = mode && mode.editing;
+  const showForm  = mode !== null;
 
   return (
     <div>
       <div className="section-row">
         <h3>Properties</h3>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}><Icon name="plus" size={14}/> Add Property</button>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Property</button>
       </div>
 
       {showForm && (
-        <div className="card" style={{marginBottom: 20}}>
-          <div className="card-title">New Property</div>
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{isEditing ? 'Edit Property' : 'New Property'}</div>
+          {/* Core property fields */}
           <div className="form-grid">
-            <div className="form-group"><label>Property Name *</label><input placeholder="e.g. Chennai Flat 1" value={form.Name} onChange={e => setForm({...form, Name: e.target.value})}/></div>
+            <div className="form-group"><label>Property Name *</label><input placeholder="e.g. Chennai Flat 1" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
             <div className="form-group"><label>Type</label>
-              <select value={form.Type} onChange={e => setForm({...form, Type: e.target.value})}>
+              <select value={form.Type} onChange={e=>f('Type',e.target.value)}>
                 <option>Apartment</option><option>House</option><option>Shop</option><option>Office</option><option>Land</option>
               </select>
             </div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input placeholder="Full address" value={form.Address} onChange={e => setForm({...form, Address: e.target.value})}/></div>
-            <div className="form-group"><label>Monthly Rent (₹) *</label><input type="number" placeholder="15000" value={form['Rent Amount']} onChange={e => setForm({...form, 'Rent Amount': e.target.value})}/></div>
-            <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e => setForm({...form, Notes: e.target.value})}/></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input placeholder="Full address" value={form.Address} onChange={e=>f('Address',e.target.value)}/></div>
+            <div className="form-group"><label>Monthly Rent (₹) *</label><input type="number" placeholder="15000" value={form['Rent Amount']} onChange={e=>f('Rent Amount',e.target.value)}/></div>
+            <div className="form-group"><label>Occupancy Status</label>
+              <select value={form.Occupancy} onChange={e=>f('Occupancy',e.target.value)}>
+                <option value="Occupied">Occupied</option><option value="Vacant">Vacant</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
           </div>
+
+          {/* Utility numbers */}
+          <div style={{margin:'16px 0 8px',fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em'}}>Utility Numbers</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Electricity Number</label><input placeholder="EB consumer no." value={form.ebNum} onChange={e=>f('ebNum',e.target.value)}/></div>
+            <div className="form-group"><label>Property Tax Number</label><input placeholder="Tax ref no." value={form.taxNum} onChange={e=>f('taxNum',e.target.value)}/></div>
+            <div className="form-group"><label>Water Bill Number</label><input placeholder="Water consumer no." value={form.waterNum} onChange={e=>f('waterNum',e.target.value)}/></div>
+          </div>
+
+          {/* Tenant details — only on add */}
+          {!isEditing && (
+            <>
+              <div style={{margin:'16px 0 8px',fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em'}}>Tenant Details <span style={{fontWeight:400,color:'var(--text-muted)'}}>(optional — can add later)</span></div>
+              <div className="form-grid">
+                <div className="form-group"><label>Tenant Name</label><input placeholder="Full name" value={form.tName} onChange={e=>f('tName',e.target.value)}/></div>
+                <div className="form-group"><label>Phone</label><input placeholder="9876543210" value={form.tPhone} onChange={e=>f('tPhone',e.target.value)}/></div>
+                <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.tEmail} onChange={e=>f('tEmail',e.target.value)}/></div>
+                <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.tAdvance} onChange={e=>f('tAdvance',e.target.value)}/></div>
+                <div className="form-group"><label>Move-in Date</label><input type="date" value={form.tMoveIn} onChange={e=>f('tMoveIn',e.target.value)}/></div>
+                <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.tNotes} onChange={e=>f('tNotes',e.target.value)}/></div>
+              </div>
+            </>
+          )}
+
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner"/>&nbsp;Saving...</> : 'Save Property'}</button>
-            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:isEditing?'Update Property':'Save Property'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
           </div>
         </div>
       )}
 
-      {data.properties.length === 0 ? (
-        <div className="card"><div className="empty"><Icon name="home" size={40}/><p>No properties yet.</p><p>Add your first property to get started.</p></div></div>
-      ) : (
-        <div className="card">
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Address</th><th>Rent/Month</th><th>Notes</th></tr></thead>
-              <tbody>
-                {data.properties.map(p => (
-                  <tr key={p.ID}>
-                    <td className="mono" style={{color:'var(--text-muted)'}}>{p.ID}</td>
-                    <td className="name">{p.Name}</td>
-                    <td><span className="badge badge-blue">{p.Type}</span></td>
-                    <td style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{p.Address}</td>
-                    <td className="mono">₹{Number(p['Rent Amount']||0).toLocaleString('en-IN')}</td>
-                    <td style={{color:'var(--text-muted)'}}>{p.Notes}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {data.properties.length === 0
+        ? <div className="card"><div className="empty"><Icon name="home" size={40}/><p>No properties yet.</p></div></div>
+        : <div className="card"><div className="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Type</th><th>Rent/Month</th><th>Occupancy</th><th>EB No.</th><th>Tax No.</th><th>Water No.</th><th></th></tr></thead>
+            <tbody>{data.properties.map(p => {
+              const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+              return (<tr key={p.ID}>
+                <td className="name">{p.Name}<div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{p.Address}</div></td>
+                <td><span className="badge badge-blue">{p.Type}</span></td>
+                <td className="mono">{fmtINR(p['Rent Amount'])}</td>
+                <td><span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':'badge-green'}`}>{p.Occupancy||'Occupied'}</span></td>
+                <td className="mono" style={{fontSize:11}}>{u['Electricity Number']||'—'}</td>
+                <td className="mono" style={{fontSize:11}}>{u['Property Tax Number']||'—'}</td>
+                <td className="mono" style={{fontSize:11}}>{u['Water Bill Number']||'—'}</td>
+                <td><EditBtn onClick={()=>openEdit(p)}/></td>
+              </tr>);
+            })}</tbody>
+          </table></div></div>
+      }
     </div>
   );
 }
 
-// Tenants Page
+// ── TENANTS ──────────────────────────────────────────────────────────────────
 function Tenants({ data, onRefresh }) {
-  const [showForm, setShowForm] = useState(false);
+  const [mode, setMode]     = useState(null);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState('active');
-  const [form, setForm] = useState({ 'Property ID': '', Name: '', Phone: '', Email: '', Advance: '', 'Move In Date': '', Notes: '' });
+  const [tab, setTab]       = useState('active');
+  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'' };
+  const [form, setForm]     = useState(blank);
+  const f = (k,v) => setForm(p => ({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (t) => { setForm({...blank,...t}); setMode({editing:t._row, id:t.ID}); };
 
   const handleSave = async () => {
-    if (!form['Property ID'] || !form.Name || !form.Phone) { alert('Property, name and phone are required.'); return; }
+    if (!form['Property ID'] || !form.Name || !form.Phone) { alert('Property, name and phone required.'); return; }
     setSaving(true);
     try {
-      // Mark previous tenant for this property as Vacated
-      const prev = data.tenants.filter(t => t['Property ID'] === form['Property ID'] && t.Status === 'Active');
-      for (const t of prev) {
-        await updateRow('Tenants', t._row, [t.ID, t['Property ID'], t.Name, t.Phone, t.Email, t.Advance, t['Move In Date'], 'Vacated', t.Notes], 9);
+      if (mode === 'add') {
+        // vacate existing active tenant for this property
+        for (const t of data.tenants.filter(t => t['Property ID'] === form['Property ID'] && t.Status === 'Active')) {
+          await updateRow('Tenants', t._row, [t.ID, t['Property ID'], t.Name, t.Phone, t.Email, t.Advance, t['Move In Date'], 'Vacated', t.Notes, t['Last Rent Revision']||''], 10);
+        }
+        await appendRow('Tenants', [`T${Date.now()}`, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', 'Active', form.Notes||'', form['Last Rent Revision']||'']);
+        // mark property occupied
+        const prop = data.properties.find(p => p.ID === form['Property ID']);
+        if (prop) await updateRow('Properties', prop._row, [prop.ID, prop.Name, prop.Address, prop.Type, prop['Rent Amount'], 'Occupied', prop.Notes, prop.Created||''], 8);
+      } else {
+        await updateRow('Tenants', mode.editing, [mode.id, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', form.Status||'Active', form.Notes||'', form['Last Rent Revision']||''], 10);
       }
-      await appendRow('Tenants', [`T${Date.now()}`, form['Property ID'], form.Name, form.Phone, form.Email, form.Advance, form['Move In Date'], 'Active', form.Notes]);
-      setShowForm(false);
-      setForm({ 'Property ID': '', Name: '', Phone: '', Email: '', Advance: '', 'Move In Date': '', Notes: '' });
-      onRefresh();
-    } catch (e) { alert('Error: ' + e.message); }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
 
-  const filtered = data.tenants.filter(t => tab === 'active' ? t.Status === 'Active' : t.Status !== 'Active');
+  const filtered = data.tenants.filter(t => tab==='active' ? t.Status==='Active' : t.Status!=='Active');
 
   return (
     <div>
       <div className="section-row">
         <h3>Tenants</h3>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}><Icon name="plus" size={14}/> Add / Update Tenant</button>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Tenant</button>
       </div>
 
-      {showForm && (
-        <div className="card" style={{marginBottom: 20}}>
-          <div className="card-title">New Tenant</div>
-          <div style={{fontSize:12,color:'var(--gold)',marginBottom:12,padding:'8px 12px',background:'rgba(245,158,11,.08)',borderRadius:6,border:'1px solid rgba(245,158,11,.2)'}}>
-            If this property already has a tenant, they will automatically be marked as Vacated.
-          </div>
+      {mode !== null && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{mode==='add'?'New Tenant':'Edit Tenant'}</div>
+          {mode==='add' && <div style={{fontSize:12,color:'var(--gold)',marginBottom:12,padding:'8px 12px',background:'rgba(245,158,11,.08)',borderRadius:6,border:'1px solid rgba(245,158,11,.2)'}}>Existing active tenant for this property will be auto-vacated.</div>}
           <div className="form-grid">
             <div className="form-group"><label>Property *</label>
-              <select value={form['Property ID']} onChange={e => setForm({...form, 'Property ID': e.target.value})}>
+              <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
                 <option value="">Select property</option>
-                {data.properties.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Tenant Name *</label><input placeholder="Full name" value={form.Name} onChange={e => setForm({...form, Name: e.target.value})}/></div>
-            <div className="form-group"><label>Phone *</label><input placeholder="9876543210" value={form.Phone} onChange={e => setForm({...form, Phone: e.target.value})}/></div>
-            <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.Email} onChange={e => setForm({...form, Email: e.target.value})}/></div>
-            <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.Advance} onChange={e => setForm({...form, Advance: e.target.value})}/></div>
-            <div className="form-group"><label>Move-in Date</label><input type="date" value={form['Move In Date']} onChange={e => setForm({...form, 'Move In Date': e.target.value})}/></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="Any notes about this tenant" value={form.Notes} onChange={e => setForm({...form, Notes: e.target.value})}/></div>
+            <div className="form-group"><label>Tenant Name *</label><input placeholder="Full name" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
+            <div className="form-group"><label>Phone *</label><input placeholder="9876543210" value={form.Phone} onChange={e=>f('Phone',e.target.value)}/></div>
+            <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.Email} onChange={e=>f('Email',e.target.value)}/></div>
+            <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.Advance} onChange={e=>f('Advance',e.target.value)}/></div>
+            <div className="form-group"><label>Move-in Date</label><input type="date" value={form['Move In Date']} onChange={e=>f('Move In Date',e.target.value)}/></div>
+            <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form['Last Rent Revision']} onChange={e=>f('Last Rent Revision',e.target.value)}/></div>
+            {mode!=='add' && <div className="form-group"><label>Status</label>
+              <select value={form.Status||'Active'} onChange={e=>f('Status',e.target.value)}>
+                <option>Active</option><option>Vacated</option>
+              </select>
+            </div>}
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
           </div>
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner"/>&nbsp;Saving...</> : 'Save Tenant'}</button>
-            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:mode==='add'?'Save Tenant':'Update Tenant'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
           </div>
         </div>
       )}
 
       <div className="tabs">
-        <button className={`tab ${tab==='active'?'active':''}`} onClick={() => setTab('active')}>Active ({data.tenants.filter(t=>t.Status==='Active').length})</button>
-        <button className={`tab ${tab==='past'?'active':''}`} onClick={() => setTab('past')}>Past ({data.tenants.filter(t=>t.Status!=='Active').length})</button>
+        <button className={`tab ${tab==='active'?'active':''}`} onClick={()=>setTab('active')}>Active ({data.tenants.filter(t=>t.Status==='Active').length})</button>
+        <button className={`tab ${tab==='past'?'active':''}`} onClick={()=>setTab('past')}>Past ({data.tenants.filter(t=>t.Status!=='Active').length})</button>
       </div>
 
       <div className="card">
-        {filtered.length === 0 ? <div className="empty"><p>No {tab} tenants.</p></div> :
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Status</th></tr></thead>
-            <tbody>
-              {filtered.map(t => {
-                const prop = data.properties.find(p => p.ID === t['Property ID']);
-                return (
-                  <tr key={t.ID}>
-                    <td className="name">{t.Name}</td>
-                    <td>{prop ? prop.Name : t['Property ID']}</td>
-                    <td className="mono">{t.Phone}</td>
-                    <td className="mono">₹{Number(t.Advance||0).toLocaleString('en-IN')}</td>
-                    <td style={{color:'var(--text-muted)'}}>{t['Move In Date']}</td>
-                    <td><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>}
+        {filtered.length===0 ? <div className="empty"><p>No {tab} tenants.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Last Rent Revision</th><th>Status</th><th></th></tr></thead>
+          <tbody>{filtered.map(t => {
+            const prop = data.properties.find(p => p.ID === t['Property ID']);
+            return (<tr key={t.ID}>
+              <td className="name">{t.Name}</td>
+              <td>{prop?prop.Name:t['Property ID']}</td>
+              <td className="mono">{t.Phone}</td>
+              <td className="mono">{fmtINR(t.Advance)}</td>
+              <td style={{color:'var(--text-muted)'}}>{t['Move In Date']}</td>
+              <td style={{color: t['Last Rent Revision'] ? 'var(--gold)' : 'var(--text-muted)'}}>{t['Last Rent Revision']||'—'}</td>
+              <td><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></td>
+              <td><EditBtn onClick={()=>openEdit(t)}/></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
       </div>
     </div>
   );
 }
 
-// Rent Page
+// ── RECEIPT MODAL ─────────────────────────────────────────────────────────────
+function ReceiptModal({ receipt, onClose }) {
+  const receiptRef = useRef();
+  const [generating, setGenerating] = useState(false);
+
+  const recNum = 'REC' + Math.floor(10000000 + Math.random()*90000000);
+  const now    = new Date();
+  const genTime = now.toLocaleDateString('en-IN') + ' at ' + now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+
+  const monthLabel = receipt.months.length === 1
+    ? `${receipt.months[0].month} ${receipt.months[0].year}`
+    : `${receipt.months[0].month} ${receipt.months[0].year} to ${receipt.months[receipt.months.length-1].month} ${receipt.months[receipt.months.length-1].year}`;
+
+  const captureAndShare = async () => {
+    setGenerating(true);
+    try {
+      const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        // Open image in new tab for saving / sharing
+        const imgWin = window.open('', '_blank');
+        imgWin.document.write(`
+          <html><head><title>Rent Receipt</title>
+          <meta name="viewport" content="width=device-width,initial-scale=1"/>
+          <style>body{margin:0;background:#f3f4f6;display:flex;flex-direction:column;align-items:center;padding:16px;font-family:sans-serif;}
+          img{max-width:100%;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.15);}
+          .bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;justify-content:center;}
+          .btn{padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;}
+          .wa{background:#25d366;color:#fff;}.dl{background:#2563eb;color:#fff;}</style></head>
+          <body>
+          <div class="bar">
+            <button class="btn wa" onclick="openWA()">📲 Send on WhatsApp</button>
+            <button class="btn dl" onclick="dl()">⬇️ Download Image</button>
+          </div>
+          <img id="img" src="${url}"/>
+          <script>
+            const phone='${receipt.phone}'.replace(/\\D/g,'');
+            const intlPhone=phone.startsWith('91')?phone:'91'+phone;
+            function openWA(){
+              const isMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
+              const waUrl=isMobile
+                ?'whatsapp://send?phone='+intlPhone
+                :'https://web.whatsapp.com/send?phone='+intlPhone;
+              window.open(waUrl,'_blank');
+              alert('WhatsApp opened!\\n\\nSteps:\\n1. Download the image below\\n2. Attach it in the WhatsApp chat');
+            }
+            function dl(){
+              const a=document.createElement('a');
+              a.href='${url}';
+              a.download='rent-receipt-${receipt.tenantName.replace(/\\s+/g,'-')}.png';
+              a.click();
+            }
+          <\/script></body></html>`);
+        imgWin.document.close();
+        setGenerating(false);
+      }, 'image/png');
+    } catch(e) { alert('Error generating receipt: '+e.message); setGenerating(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box">
+        {/* Receipt content — this gets captured as image */}
+        <div ref={receiptRef} className="receipt-wrap">
+          <div className="receipt-emoji">🏠</div>
+          <div className="receipt-title">RENT RECEIPT</div>
+          <hr className="receipt-divider"/>
+
+          <div className="receipt-label">Received From</div>
+          <div className="receipt-value">{receipt.tenantName}</div>
+
+          <div className="receipt-label">Contact Number</div>
+          <div className="receipt-value">{receipt.phone}</div>
+
+          <div className="receipt-label">Property Address</div>
+          <div className="receipt-value">{receipt.address}</div>
+
+          <hr className="receipt-divider-light"/>
+
+          <div className="receipt-row">
+            <span className="receipt-row-label">Rent For</span>
+            <span className="receipt-row-value">{monthLabel}</span>
+          </div>
+          <hr className="receipt-divider-light"/>
+          <div className="receipt-row">
+            <span className="receipt-row-label">Received On</span>
+            <span className="receipt-row-value">{receipt.paidDate}</span>
+          </div>
+          <hr className="receipt-divider-light"/>
+          <div className="receipt-row">
+            <span className="receipt-row-label">Payment Method</span>
+            <span className="receipt-row-value">{receipt.paymentMethod}</span>
+          </div>
+
+          <div className="receipt-amount-box">
+            <div className="receipt-amount-label">Amount Received</div>
+            <div className="receipt-amount-value">₹ {Number(receipt.totalAmount).toLocaleString('en-IN')}</div>
+          </div>
+
+          <hr className="receipt-divider"/>
+          <div className="receipt-footer">
+            Thank you for your timely payment<br/>
+            Receipt #{recNum}<br/>
+            Generated on {genTime}
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-primary" style={{flex:1,justifyContent:'center',background:'#25d366'}} onClick={captureAndShare} disabled={generating}>
+            {generating ? <><span className="spinner"/>&nbsp;Generating...</> : '📲 Generate & Send WhatsApp'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RENT ─────────────────────────────────────────────────────────────────────
 function Rent({ data, onRefresh }) {
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [filterMonth, setFilterMonth] = useState(new Date().toLocaleString('en-IN', { month: 'long' }));
-  const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const years = ['2023','2024','2025','2026','2027'];
-  const [form, setForm] = useState({ 'Property ID': '', Month: new Date().toLocaleString('en-IN',{month:'long'}), Year: String(new Date().getFullYear()), Amount: '', 'Paid Date': new Date().toISOString().split('T')[0], Status: 'Paid', Notes: '' });
+  const [mode, setMode]      = useState(null);
+  const [saving, setSaving]  = useState(false);
+  const [receipt, setReceipt]= useState(null);
+  const [filterMonth, setFM] = useState(new Date().toLocaleString('en-IN',{month:'long'}));
+  const [filterYear,  setFY] = useState(String(new Date().getFullYear()));
+
+  const curMonth = new Date().toLocaleString('en-IN',{month:'long'});
+  const curYear  = String(new Date().getFullYear());
+
+  // blank form — selectedMonths is array of {month, year}
+  const blank = {
+    'Property ID':'', selectedMonths:[], perMonthAmount:'',
+    totalAmount:'', 'Paid Date': new Date().toISOString().split('T')[0],
+    Status:'Paid', paymentMethod:'Cash', Notes:''
+  };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  // For edit — single month mode
+  const blankEdit = { 'Property ID':'', Month:curMonth, Year:curYear, Amount:'', 'Paid Date': new Date().toISOString().split('T')[0], Status:'Paid', paymentMethod:'Cash', Notes:'' };
+  const [editForm, setEditForm] = useState(blankEdit);
+  const ef = (k,v) => setEditForm(p=>({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (r) => { setEditForm({...blankEdit,...r, paymentMethod: r.paymentMethod||'Cash'}); setMode({editing:r._row, id:r.ID}); };
+
+  // Toggle month selection in grid
+  const toggleMonth = (month, year) => {
+    const key = `${month}|${year}`;
+    const exists = form.selectedMonths.find(m => `${m.month}|${m.year}` === key);
+    let updated;
+    if (exists) {
+      updated = form.selectedMonths.filter(m => `${m.month}|${m.year}` !== key);
+    } else {
+      updated = [...form.selectedMonths, {month, year}];
+    }
+    const total = updated.length * Number(form.perMonthAmount||0);
+    setForm(p=>({...p, selectedMonths:updated, totalAmount: total||''}));
+  };
 
   const handleSave = async () => {
-    if (!form['Property ID'] || !form.Amount) { alert('Property and amount are required.'); return; }
+    if (!form['Property ID'] || form.selectedMonths.length===0 || !form.perMonthAmount) {
+      alert('Select property, at least one month, and per-month amount.'); return;
+    }
     setSaving(true);
     try {
-      const tenant = data.tenants.find(t => t['Property ID'] === form['Property ID'] && t.Status === 'Active');
-      await appendRow('Rent', [`R${Date.now()}`, form['Property ID'], tenant?.ID || '', form.Month, form.Year, form.Amount, form['Paid Date'], form.Status, form.Notes]);
-      setShowForm(false);
+      const tenant = data.tenants.find(t => t['Property ID']===form['Property ID'] && t.Status==='Active');
+      // Create one row per month
+      for (const {month, year} of form.selectedMonths) {
+        await appendRow('Rent', [
+          `R${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+          form['Property ID'], tenant?.ID||'',
+          month, year,
+          form.perMonthAmount,
+          form['Paid Date'], form.Status,
+          form.Notes + (form.selectedMonths.length>1 ? ` [Bulk payment: ${form.selectedMonths.length} months]` : '')
+        ]);
+      }
+      // Prepare receipt data
+      const prop = data.properties.find(p=>p.ID===form['Property ID']);
+      const receiptData = {
+        tenantName: tenant?.Name || 'Tenant',
+        phone: tenant?.Phone || '',
+        address: prop?.Address || prop?.Name || '',
+        months: form.selectedMonths,
+        paidDate: new Date(form['Paid Date']).toLocaleDateString('en-IN'),
+        paymentMethod: form.paymentMethod,
+        totalAmount: form.totalAmount || (form.selectedMonths.length * Number(form.perMonthAmount)),
+        perMonthAmount: form.perMonthAmount,
+      };
+      setMode(null);
       onRefresh();
-    } catch (e) { alert('Error: ' + e.message); }
+      setReceipt(receiptData);
+    } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
 
-  const filtered = data.rent.filter(r => r.Month === filterMonth && String(r.Year) === filterYear);
-  const total = filtered.filter(r => r.Status === 'Paid').reduce((s, r) => s + Number(r.Amount || 0), 0);
-  const paidPropIds = filtered.filter(r => r.Status === 'Paid').map(r => r['Property ID']);
-  const notPaid = data.properties.filter(p => !paidPropIds.includes(p.ID));
+  const handleEditSave = async () => {
+    if (!editForm['Property ID']||!editForm.Amount) { alert('Property and amount required.'); return; }
+    setSaving(true);
+    try {
+      const tenant = data.tenants.find(t=>t['Property ID']===editForm['Property ID']&&t.Status==='Active');
+      await updateRow('Rent', mode.editing, [mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year, editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes], 9);
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const showReceiptForRow = (r) => {
+    const prop   = data.properties.find(p=>p.ID===r['Property ID']);
+    const tenant = data.tenants.find(t=>t.ID===r['Tenant ID']) || data.tenants.find(t=>t['Property ID']===r['Property ID']&&t.Status==='Active');
+    setReceipt({
+      tenantName: tenant?.Name||'Tenant',
+      phone: tenant?.Phone||'',
+      address: prop?.Address||prop?.Name||'',
+      months: [{month:r.Month, year:r.Year}],
+      paidDate: r['Paid Date']||r['Paid Date']||new Date().toLocaleDateString('en-IN'),
+      paymentMethod: r.paymentMethod||r.Notes||'Cash',
+      totalAmount: r.Amount,
+      perMonthAmount: r.Amount,
+    });
+  };
+
+  // Build 12-month rolling grid for current+past year
+  const monthGrid = [];
+  for (const yr of [String(Number(curYear)-1), curYear]) {
+    for (const mo of MONTHS) { monthGrid.push({month:mo, year:yr}); }
+  }
+
+  const filtered = data.rent.filter(r=>r.Month===filterMonth && String(r.Year)===filterYear);
+  const total    = filtered.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+  const paidIds  = filtered.filter(r=>r.Status==='Paid').map(r=>r['Property ID']);
+  const notPaid  = data.properties.filter(p=>!paidIds.includes(p.ID)&&p.Occupancy!=='Vacant');
 
   return (
     <div>
+      {receipt && <ReceiptModal receipt={receipt} onClose={()=>setReceipt(null)}/>}
+
       <div className="section-row">
         <h3>Rent</h3>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}><Icon name="plus" size={14}/> Record Rent</button>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Record Rent</button>
       </div>
 
-      {showForm && (
+      {/* ADD FORM — multi-month */}
+      {mode==='add' && (
         <div className="card" style={{marginBottom:20}}>
           <div className="card-title">Record Rent Payment</div>
           <div className="form-grid">
             <div className="form-group"><label>Property *</label>
-              <select value={form['Property ID']} onChange={e => {
-                const prop = data.properties.find(p => p.ID === e.target.value);
-                setForm({...form, 'Property ID': e.target.value, Amount: prop?.['Rent Amount'] || form.Amount });
+              <select value={form['Property ID']} onChange={e=>{
+                const prop=data.properties.find(p=>p.ID===e.target.value);
+                const amt = prop?.['Rent Amount']||'';
+                const total2 = form.selectedMonths.length * Number(amt);
+                setForm(p=>({...p,'Property ID':e.target.value, perMonthAmount:amt, totalAmount:total2||''}));
               }}>
                 <option value="">Select property</option>
-                {data.properties.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Per Month Amount (₹) *</label>
+              <input type="number" value={form.perMonthAmount} onChange={e=>{
+                const amt=e.target.value;
+                const total2=form.selectedMonths.length*Number(amt||0);
+                setForm(p=>({...p,perMonthAmount:amt,totalAmount:total2||''}));
+              }}/>
+            </div>
+            <div className="form-group"><label>Paid Date</label><input type="date" value={form['Paid Date']} onChange={e=>f('Paid Date',e.target.value)}/></div>
+            <div className="form-group"><label>Status</label>
+              <select value={form.Status} onChange={e=>f('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
+            </div>
+            <div className="form-group"><label>Payment Method</label>
+              <select value={form.paymentMethod} onChange={e=>f('paymentMethod',e.target.value)}>
+                <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input placeholder="Optional notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+
+          {/* Month selector grid */}
+          <div style={{marginTop:16}}>
+            <div style={{fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>
+              Select Month(s) * &nbsp;
+              <span style={{fontWeight:400,color:'var(--text-muted)'}}>— tap multiple for bulk payment</span>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+              {[String(Number(curYear)-1), curYear].map(yr=>(
+                <div key={yr}>
+                  <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:600}}>{yr}</div>
+                  <div className="month-grid">
+                    {MONTHS.map(mo=>{
+                      const sel=form.selectedMonths.find(m=>m.month===mo&&m.year===yr);
+                      return <div key={mo} className={`month-chip ${sel?'selected':''}`} onClick={()=>toggleMonth(mo,yr)}>{mo.slice(0,3)}</div>;
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {form.selectedMonths.length>0 && (
+              <div style={{marginTop:10,padding:'8px 14px',background:'var(--green-light)',borderRadius:6,fontSize:13,color:'var(--green)',fontWeight:500}}>
+                {form.selectedMonths.length} month{form.selectedMonths.length>1?'s':''} selected
+                {form.selectedMonths.length>1 && form.perMonthAmount ? ` — Total: ₹${(form.selectedMonths.length*Number(form.perMonthAmount)).toLocaleString('en-IN')}` : ''}
+              </div>
+            )}
+          </div>
+
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Save & Generate Receipt'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT FORM — single month */}
+      {mode && mode.editing && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">Edit Rent Record</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={editForm['Property ID']} onChange={e=>ef('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
             <div className="form-group"><label>Month</label>
-              <select value={form.Month} onChange={e => setForm({...form, Month: e.target.value})}>
-                {months.map(m => <option key={m}>{m}</option>)}
-              </select>
+              <select value={editForm.Month} onChange={e=>ef('Month',e.target.value)}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
             </div>
             <div className="form-group"><label>Year</label>
-              <select value={form.Year} onChange={e => setForm({...form, Year: e.target.value})}>
-                {years.map(y => <option key={y}>{y}</option>)}
-              </select>
+              <select value={editForm.Year} onChange={e=>ef('Year',e.target.value)}>{YEARS.map(y=><option key={y}>{y}</option>)}</select>
             </div>
-            <div className="form-group"><label>Amount (₹) *</label><input type="number" placeholder="15000" value={form.Amount} onChange={e => setForm({...form, Amount: e.target.value})}/></div>
-            <div className="form-group"><label>Paid Date</label><input type="date" value={form['Paid Date']} onChange={e => setForm({...form, 'Paid Date': e.target.value})}/></div>
+            <div className="form-group"><label>Amount (₹) *</label><input type="number" value={editForm.Amount} onChange={e=>ef('Amount',e.target.value)}/></div>
+            <div className="form-group"><label>Paid Date</label><input type="date" value={editForm['Paid Date']} onChange={e=>ef('Paid Date',e.target.value)}/></div>
             <div className="form-group"><label>Status</label>
-              <select value={form.Status} onChange={e => setForm({...form, Status: e.target.value})}>
-                <option>Paid</option><option>Partial</option><option>Pending</option>
-              </select>
+              <select value={editForm.Status} onChange={e=>ef('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
             </div>
-            <div className="form-group"><label>Notes</label><input placeholder="e.g. Paid by UPI" value={form.Notes} onChange={e => setForm({...form, Notes: e.target.value})}/></div>
+            <div className="form-group"><label>Notes</label><input value={editForm.Notes} onChange={e=>ef('Notes',e.target.value)}/></div>
           </div>
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner"/>&nbsp;Saving...</> : 'Save'}</button>
-            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleEditSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Update'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
           </div>
         </div>
       )}
 
       <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-        <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13}} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
-          {months.map(m => <option key={m}>{m}</option>)}
+        <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13}} value={filterMonth} onChange={e=>setFM(e.target.value)}>
+          {MONTHS.map(m=><option key={m}>{m}</option>)}
         </select>
-        <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13}} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
-          {years.map(y => <option key={y}>{y}</option>)}
+        <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13}} value={filterYear} onChange={e=>setFY(e.target.value)}>
+          {YEARS.map(y=><option key={y}>{y}</option>)}
         </select>
-        <div style={{marginLeft:'auto',fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>
-          Collected: ₹{total.toLocaleString('en-IN')}
-        </div>
+        <div style={{marginLeft:'auto',fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>Collected: {fmtINR(total)}</div>
       </div>
 
-      {notPaid.length > 0 && (
+      {notPaid.length>0 && (
         <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:13}}>
           <span style={{color:'var(--red)',fontWeight:500}}>Pending: </span>
-          <span style={{color:'var(--text-secondary)'}}>{notPaid.map(p => p.Name).join(', ')}</span>
+          <span style={{color:'var(--text-secondary)'}}>{notPaid.map(p=>p.Name).join(', ')}</span>
         </div>
       )}
 
       <div className="card">
-        {filtered.length === 0 ? <div className="empty"><p>No rent records for {filterMonth} {filterYear}.</p></div> :
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Status</th><th>Notes</th></tr></thead>
-            <tbody>
-              {filtered.map(r => {
-                const prop = data.properties.find(p => p.ID === r['Property ID']);
-                const tenant = data.tenants.find(t => t.ID === r['Tenant ID']);
-                return (
-                  <tr key={r.ID}>
-                    <td className="name">{prop ? prop.Name : r['Property ID']}</td>
-                    <td>{tenant ? tenant.Name : '—'}</td>
-                    <td>{r.Month} {r.Year}</td>
-                    <td className="mono">₹{Number(r.Amount||0).toLocaleString('en-IN')}</td>
-                    <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
-                    <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
-                    <td style={{color:'var(--text-muted)'}}>{r.Notes}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>}
+        {filtered.length===0 ? <div className="empty"><p>No rent records for {filterMonth} {filterYear}.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+          <tbody>{filtered.map(r=>{
+            const prop=data.properties.find(p=>p.ID===r['Property ID']);
+            const tenant=data.tenants.find(t=>t.ID===r['Tenant ID']);
+            return (<tr key={r.ID}>
+              <td className="name">{prop?prop.Name:r['Property ID']}</td>
+              <td>{tenant?tenant.Name:'—'}</td>
+              <td>{r.Month} {r.Year}</td>
+              <td className="mono">{fmtINR(r.Amount)}</td>
+              <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+              <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+              <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+              <td style={{display:'flex',gap:4}}>
+                <EditBtn onClick={()=>openEdit(r)}/>
+                <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>showReceiptForRow(r)}>🧾</button>
+              </td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
       </div>
     </div>
   );
 }
 
-// Maintenance Page
+
+// ── MAINTENANCE ───────────────────────────────────────────────────────────────
 function Maintenance({ data, onRefresh }) {
-  const [showForm, setShowForm] = useState(false);
+  const [mode, setMode]     = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ 'Property ID': '', Date: new Date().toISOString().split('T')[0], Description: '', Amount: '', Vendor: '', Category: 'Repair' });
+  const blank = { 'Property ID':'', Date: new Date().toISOString().split('T')[0], Description:'', Amount:'', Vendor:'', Category:'Repair' };
+  const [form, setForm]     = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (m) => { setForm({...blank,...m}); setMode({editing:m._row, id:m.ID}); };
 
   const handleSave = async () => {
-    if (!form['Property ID'] || !form.Description || !form.Amount) { alert('Property, description and amount required.'); return; }
+    if (!form['Property ID']||!form.Description||!form.Amount) { alert('Property, description and amount required.'); return; }
     setSaving(true);
     try {
-      await appendRow('Maintenance', [`M${Date.now()}`, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category]);
-      setShowForm(false);
-      setForm({ 'Property ID': '', Date: new Date().toISOString().split('T')[0], Description: '', Amount: '', Vendor: '', Category: 'Repair' });
-      onRefresh();
-    } catch (e) { alert('Error: ' + e.message); }
+      if (mode==='add') {
+        await appendRow('Maintenance', [`M${Date.now()}`, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category]);
+      } else {
+        await updateRow('Maintenance', mode.editing, [mode.id, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category], 7);
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
 
-  const total = data.maintenance.reduce((s, m) => s + Number(m.Amount || 0), 0);
+  const total = data.maintenance.reduce((s,m)=>s+Number(m.Amount||0),0);
 
   return (
     <div>
       <div className="section-row">
         <h3>Maintenance</h3>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}><Icon name="plus" size={14}/> Add Record</button>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Record</button>
       </div>
 
-      {showForm && (
+      {mode!==null && (
         <div className="card" style={{marginBottom:20}}>
-          <div className="card-title">Maintenance Record</div>
+          <div className="card-title">{mode==='add'?'Maintenance Record':'Edit Record'}</div>
           <div className="form-grid">
             <div className="form-group"><label>Property *</label>
-              <select value={form['Property ID']} onChange={e => setForm({...form, 'Property ID': e.target.value})}>
+              <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
                 <option value="">Select property</option>
-                {data.properties.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Date</label><input type="date" value={form.Date} onChange={e => setForm({...form, Date: e.target.value})}/></div>
+            <div className="form-group"><label>Date</label><input type="date" value={form.Date} onChange={e=>f('Date',e.target.value)}/></div>
             <div className="form-group"><label>Category</label>
-              <select value={form.Category} onChange={e => setForm({...form, Category: e.target.value})}>
+              <select value={form.Category} onChange={e=>f('Category',e.target.value)}>
                 <option>Repair</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Cleaning</option><option>Other</option>
               </select>
             </div>
-            <div className="form-group"><label>Amount (₹) *</label><input type="number" placeholder="2500" value={form.Amount} onChange={e => setForm({...form, Amount: e.target.value})}/></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description *</label><input placeholder="What was repaired/maintained?" value={form.Description} onChange={e => setForm({...form, Description: e.target.value})}/></div>
-            <div className="form-group"><label>Vendor / Person</label><input placeholder="Who did the work?" value={form.Vendor} onChange={e => setForm({...form, Vendor: e.target.value})}/></div>
+            <div className="form-group"><label>Amount (₹) *</label><input type="number" value={form.Amount} onChange={e=>f('Amount',e.target.value)}/></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description *</label><input value={form.Description} onChange={e=>f('Description',e.target.value)}/></div>
+            <div className="form-group"><label>Vendor / Person</label><input value={form.Vendor} onChange={e=>f('Vendor',e.target.value)}/></div>
           </div>
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner"/>&nbsp;Saving...</> : 'Save'}</button>
-            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:mode==='add'?'Save':'Update'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
           </div>
         </div>
       )}
 
-      <div style={{display:'flex',gap:12,marginBottom:16}}>
-        <div className="stat-card" style={{padding:'12px 16px'}}>
-          <div className="stat-label">Total Spent</div>
-          <div className="stat-value gold" style={{fontSize:20}}>₹{total.toLocaleString('en-IN')}</div>
-        </div>
-      </div>
+      <div style={{marginBottom:16}}><div className="stat-card" style={{display:'inline-block',padding:'12px 20px'}}><div className="stat-label">Total Spent</div><div className="stat-value gold" style={{fontSize:20}}>{fmtINR(total)}</div></div></div>
 
       <div className="card">
-        {data.maintenance.length === 0 ? <div className="empty"><p>No maintenance records.</p></div> :
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Property</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Vendor</th></tr></thead>
-            <tbody>
-              {[...data.maintenance].reverse().map(m => {
-                const prop = data.properties.find(p => p.ID === m['Property ID']);
-                return (
-                  <tr key={m.ID}>
-                    <td className="name">{prop ? prop.Name : m['Property ID']}</td>
-                    <td style={{color:'var(--text-muted)'}}>{m.Date}</td>
-                    <td><span className="badge badge-blue">{m.Category}</span></td>
-                    <td>{m.Description}</td>
-                    <td className="mono">₹{Number(m.Amount||0).toLocaleString('en-IN')}</td>
-                    <td style={{color:'var(--text-muted)'}}>{m.Vendor}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>}
+        {data.maintenance.length===0 ? <div className="empty"><p>No maintenance records.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Property</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Vendor</th><th></th></tr></thead>
+          <tbody>{[...data.maintenance].reverse().map(m => {
+            const prop=data.properties.find(p=>p.ID===m['Property ID']);
+            return (<tr key={m.ID}>
+              <td className="name">{prop?prop.Name:m['Property ID']}</td>
+              <td style={{color:'var(--text-muted)'}}>{m.Date}</td>
+              <td><span className="badge badge-blue">{m.Category}</span></td>
+              <td>{m.Description}</td>
+              <td className="mono">{fmtINR(m.Amount)}</td>
+              <td style={{color:'var(--text-muted)'}}>{m.Vendor}</td>
+              <td><EditBtn onClick={()=>openEdit(m)}/></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
       </div>
     </div>
   );
 }
 
-// Utilities Page
+// ── UTILITIES (now property-level, fully integrated into Properties) ──────────
+// Utilities is now embedded in the Properties page. This page shows a summary view.
 function Utilities({ data, onRefresh }) {
-  const [editing, setEditing] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({});
-
-  const startEdit = (u) => { setEditing(u['Property ID']); setForm({...u}); };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      if (editing === '__new__') {
-        await appendRow('Utilities', [form['Property ID'] || '', form['Electricity Number'] || '', form['Property Tax Number'] || '', form['Water Bill Number'] || '', form.Notes || '']);
-      } else {
-        const u = data.utilities.find(x => x['Property ID'] === editing);
-        await updateRow('Utilities', u._row, [form['Property ID'], form['Electricity Number']||'', form['Property Tax Number']||'', form['Water Bill Number']||'', form.Notes||''], 5);
-      }
-      setEditing(null);
-      onRefresh();
-    } catch (e) { alert('Error: ' + e.message); }
-    setSaving(false);
-  };
-
   return (
     <div>
       <div className="section-row">
         <h3>Utility Numbers</h3>
+        <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit via Properties → ✏️</span>
       </div>
-      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:16}}>Electricity, property tax and water bill reference numbers for each property.</div>
-
       <div className="gap-12">
+        {data.properties.length===0 && <div className="card"><div className="empty"><p>Add properties first.</p></div></div>}
         {data.properties.map(p => {
-          const u = data.utilities.find(x => x['Property ID'] === p.ID) || {};
-          const isEditing = editing === p.ID;
+          const u = data.utilities.find(u=>u['Property ID']===p.ID)||{};
           return (
             <div className="card" key={p.ID}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom: isEditing ? 16 : 0}}>
-                <div>
-                  <div style={{fontWeight:500,marginBottom:4}}>{p.Name}</div>
-                  {!isEditing && (
-                    <div style={{display:'flex',gap:20,flexWrap:'wrap',marginTop:8}}>
-                      <div><span style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Electricity</span><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Electricity Number'] || <span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
-                      <div><span style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax</span><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Property Tax Number'] || <span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
-                      <div><span style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Water Bill</span><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Water Bill Number'] || <span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
-                    </div>
-                  )}
-                </div>
-                {!isEditing && <button className="btn btn-secondary btn-sm" onClick={() => startEdit(u['Property ID'] ? u : {... u, 'Property ID': p.ID})}>Edit</button>}
+              <div style={{fontWeight:500,marginBottom:10}}>{p.Name} <span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':'badge-green'}`} style={{marginLeft:8}}>{p.Occupancy||'Occupied'}</span></div>
+              <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Electricity</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Electricity Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Property Tax Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Water Bill</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Water Bill Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
               </div>
-              {isEditing && (
-                <>
-                  <div className="form-grid">
-                    <div className="form-group"><label>Electricity Number</label><input value={form['Electricity Number']||''} onChange={e => setForm({...form, 'Electricity Number': e.target.value})}/></div>
-                    <div className="form-group"><label>Property Tax Number</label><input value={form['Property Tax Number']||''} onChange={e => setForm({...form, 'Property Tax Number': e.target.value})}/></div>
-                    <div className="form-group"><label>Water Bill Number</label><input value={form['Water Bill Number']||''} onChange={e => setForm({...form, 'Water Bill Number': e.target.value})}/></div>
-                    <div className="form-group"><label>Notes</label><input value={form.Notes||''} onChange={e => setForm({...form, Notes: e.target.value})}/></div>
-                  </div>
-                  <div className="btn-row">
-                    <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner"/>&nbsp;Saving...</> : 'Save'}</button>
-                    <button className="btn btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                  </div>
-                </>
-              )}
             </div>
           );
         })}
-        {data.properties.length === 0 && <div className="card"><div className="empty"><p>Add properties first to manage their utility numbers.</p></div></div>}
       </div>
     </div>
   );
 }
 
-// NLP Query Page
+// ── NLP QUERY ────────────────────────────────────────────────────────────────
 function NLPQuery({ data }) {
   const [messages, setMessages] = useState([
-    { role: 'ai', text: "Hi! Ask me anything about your properties. For example:\n• How much rent was collected in May?\n• Which properties haven't paid June rent?\n• What's the phone number of the tenant at [property name]?\n• Total maintenance spent this year?" }
+    { role:'ai', text:"Hi! Ask me anything about your properties.\n• How much rent was collected in May?\n• Which properties haven't paid June rent?\n• Give me the phone number of tenant at [property]?\n• Total maintenance spent this year?\n• Which tenants are due for a rent revision?" }
   ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [input, setInput]   = useState('');
+  const [loading, setLoad]  = useState(false);
   const endRef = useRef();
   const suggestions = [
     'How much rent collected this month?',
     'Which properties have not paid this month?',
+    'List all active tenants with phone numbers',
     'Total maintenance spent this year?',
-    'List all active tenants with their phone numbers',
-    'What is the advance amount for each tenant?',
-    'Show rent collection summary for last 3 months',
+    'Which tenants are due for rent revision?',
+    'Show advance amounts for all tenants',
   ];
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
 
   const ask = async (q) => {
-    if (!q.trim() || loading) return;
-    setMessages(m => [...m, { role: 'user', text: q }]);
-    setInput('');
-    setLoading(true);
+    if (!q.trim()||loading) return;
+    setMessages(m=>[...m,{role:'user',text:q}]); setInput(''); setLoad(true);
     try {
       const answer = await askClaude(q, data);
-      setMessages(m => [...m, { role: 'ai', text: answer }]);
-    } catch (e) {
-      setMessages(m => [...m, { role: 'ai', text: 'Error: ' + e.message }]);
-    }
-    setLoading(false);
+      setMessages(m=>[...m,{role:'ai',text:answer}]);
+    } catch(e) { setMessages(m=>[...m,{role:'ai',text:'Error: '+e.message}]); }
+    setLoad(false);
   };
 
   return (
     <div>
-      <div className="section-row">
-        <h3>Ask a Question</h3>
-        <span style={{fontSize:12,color:'var(--text-muted)'}}>Powered by Gemini AI (free)</span>
-      </div>
+      <div className="section-row"><h3>Ask a Question</h3><span style={{fontSize:12,color:'var(--text-muted)'}}>Powered by Gemini AI (free)</span></div>
       <div className="nlp-panel">
         <div className="nlp-messages">
-          {messages.map((m, i) => (
+          {messages.map((m,i)=>(
             <div className="msg" key={i}>
-              <div className={`msg-avatar ${m.role}`}>{m.role === 'user' ? 'You' : 'AI'}</div>
+              <div className={`msg-avatar ${m.role}`}>{m.role==='user'?'You':'AI'}</div>
               <div className={`msg-bubble ${m.role}`} style={{whiteSpace:'pre-wrap'}}>{m.text}</div>
             </div>
           ))}
-          {loading && (
-            <div className="msg">
-              <div className="msg-avatar ai">AI</div>
-              <div className="msg-bubble" style={{color:'var(--text-muted)'}}>Thinking...</div>
-            </div>
-          )}
+          {loading && <div className="msg"><div className="msg-avatar ai">AI</div><div className="msg-bubble" style={{color:'var(--text-muted)'}}>Thinking...</div></div>}
           <div ref={endRef}/>
         </div>
-        <div className="nlp-suggestions">
-          {suggestions.map(s => <button key={s} className="nlp-chip" onClick={() => ask(s)}>{s}</button>)}
-        </div>
+        <div className="nlp-suggestions">{suggestions.map(s=><button key={s} className="nlp-chip" onClick={()=>ask(s)}>{s}</button>)}</div>
         <div className="nlp-input-row">
           <textarea className="nlp-input" placeholder="Ask anything about your properties..." value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(input); }}}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input);}}}
           />
-          <button className="btn btn-primary" onClick={() => ask(input)} disabled={loading || !input.trim()}>
-            <Icon name="send" size={14}/>
-          </button>
+          <button className="btn btn-primary" onClick={()=>ask(input)} disabled={loading||!input.trim()}><Icon name="send" size={14}/></button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── PIN SCREEN ───────────────────────────────────────────────────────────────
+function PinScreen({ onUnlock }) {
+  const isFirstTime = !hasEncryptedConfig();
+  const [mode, setMode] = useState(isFirstTime ? 'setup' : 'unlock');
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [form, setForm] = useState({ spreadsheetId: '', clientId: '', geminiKey: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const PIN_LEN = 4;
+
+  const handleKey = async (k) => {
+    if (loading) return;
+    setError('');
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+
+    // PIN complete
+    if (mode === 'unlock') {
+      setLoading(true);
+      const cfg = await loadConfig(next);
+      if (cfg) {
+        setRuntimeConfig(cfg);
+        onUnlock();
+      } else {
+        setError('Wrong PIN — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+      setLoading(false);
+    } else if (mode === 'confirm') {
+      if (next === confirmPin) {
+        setLoading(true);
+        await persistConfig(next, form);
+        setRuntimeConfig(form);
+        onUnlock();
+        setLoading(false);
+      } else {
+        setError('PINs do not match — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+    }
+  };
+
+  const handleSetupNext = () => {
+    if (!form.spreadsheetId || !form.clientId || !form.geminiKey) { setError('All three fields are required.'); return; }
+    setError('');
+    setMode('choose-pin');
+    setPin('');
+  };
+
+  const handleChoosePin = async (k) => {
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+    setConfirmPin(next);
+    setPin('');
+    setMode('confirm');
+  };
+
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','del'];
+
+  if (mode === 'setup') return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+        <div className="pin-title">First-time Setup</div>
+        <div className="pin-sub">Enter your keys below. They'll be encrypted with a PIN you choose — never stored in plain text.</div>
+        <div className="pin-setup-form">
+          <div className="form-group"><label>Google Sheet ID</label><input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={form.spreadsheetId} onChange={e => setForm({...form, spreadsheetId: e.target.value})}/></div>
+          <div className="form-group"><label>Google OAuth Client ID</label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
+          <div className="form-group"><label>Gemini API Key</label><input type="password" placeholder="AIzaSy..." value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/></div>
+          {error && <div className="pin-error">{error}</div>}
+          <button className="btn btn-primary" style={{width:'100%',marginTop:8,justifyContent:'center'}} onClick={handleSetupNext}>Next — Choose PIN →</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const modeLabel = mode === 'choose-pin' ? 'Choose a 4-digit PIN' : mode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN';
+  const modeSubLabel = mode === 'choose-pin' ? 'Share this PIN with anyone you give app access to' : mode === 'confirm' ? 'Enter the same PIN again' : 'Keys are stored encrypted — PIN never leaves your device';
+
+  return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+        <div className="pin-title">{modeLabel}</div>
+        <div className="pin-sub">{modeSubLabel}</div>
+        <div className="pin-dots">
+          {Array.from({length: PIN_LEN}).map((_, i) => (
+            <div key={i} className={`pin-dot ${i < pin.length ? (error ? 'error' : 'filled') : ''}`}/>
+          ))}
+        </div>
+        <div className="pin-keypad">
+          {keys.map((k, i) => k === '' ? <div key={i}/> : (
+            <button key={i} className={`pin-key ${k === 'del' ? 'del' : ''}`}
+              onClick={() => mode === 'choose-pin' ? handleChoosePin(k) : handleKey(k)}
+              disabled={loading}
+            >{k === 'del' ? '⌫' : k}</button>
+          ))}
+        </div>
+        <div className="pin-error">{error}</div>
+        {mode === 'unlock' && (
+          <span className="pin-toggle" onClick={() => { setMode('setup'); setPin(''); localStorage.removeItem(STORE_KEY); }}>
+            Reset &amp; re-enter keys
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
 // Setup Page
-function Setup() {
-  const [cfg, setCfg] = useState(getConfig());
-  const [saved, setSaved] = useState(false);
+function Setup({ onChangePIN }) {
+  const cfg = getConfig();
+  const [showChange, setShowChange] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
 
-  const update = (key, val) => {
-    const next = { ...cfg, [key]: val };
-    setCfg(next);
-    saveConfig(next);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleChangePIN = async () => {
+    if (!oldPin || !newPin || !confirmPin) { setErr('Fill all fields.'); return; }
+    if (newPin !== confirmPin) { setErr('New PINs do not match.'); return; }
+    if (newPin.length < 4) { setErr('PIN must be 4 digits.'); return; }
+    const existing = await loadConfig(oldPin);
+    if (!existing) { setErr('Current PIN is incorrect.'); return; }
+    await persistConfig(newPin, existing);
+    setMsg('PIN changed successfully!'); setErr(''); setOldPin(''); setNewPin(''); setConfirmPin(''); setShowChange(false);
   };
 
   return (
     <div>
-      <div className="section-row">
-        <h3>Setup</h3>
-        {saved && <span style={{fontSize:12,color:'var(--green)',display:'flex',alignItems:'center',gap:4}}><Icon name="check" size={12}/>Saved</span>}
-      </div>
+      <div className="section-row"><h3>Setup</h3></div>
 
       <div className="setup-step">
-        <div className={`setup-num ${cfg.spreadsheetId ? 'done' : ''}`}>{cfg.spreadsheetId ? <Icon name="check" size={14}/> : '1'}</div>
+        <div className="setup-num done"><Icon name="check" size={14}/></div>
         <div className="setup-text">
-          <h3>Create your Google Sheet</h3>
-          <p>Go to <a href="https://sheets.new" target="_blank" rel="noreferrer" style={{color:'var(--accent)'}}>sheets.new</a> and create a new spreadsheet. Create 5 tabs named exactly: <code>Properties</code>, <code>Tenants</code>, <code>Rent</code>, <code>Maintenance</code>, <code>Utilities</code>. Then copy the Sheet ID from the URL:</p>
-          <div className="input-block">https://docs.google.com/spreadsheets/d/<span style={{color:'var(--accent)'}}>YOUR_SHEET_ID</span>/edit</div>
-          <div style={{marginTop:10}}>
-            <div className="form-group">
-              <label>Paste your Sheet ID here</label>
-              <input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={cfg.spreadsheetId || ''} onChange={e => update('spreadsheetId', e.target.value)}/>
-            </div>
+          <h3>Keys stored encrypted ✓</h3>
+          <p>Your Sheet ID, Client ID, and Gemini key are encrypted with AES-256 using your PIN. They are never stored in plain text and never appear in source code. Safe even with a public GitHub repo.</p>
+          <div style={{marginTop:10,display:'flex',gap:12,flexWrap:'wrap'}}>
+            <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>🔒 AES-256-GCM encrypted</div>
+            <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>✓ Safe with public repo</div>
+            <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>📱 Works on any browser</div>
           </div>
         </div>
       </div>
 
       <div className="setup-step">
-        <div className={`setup-num ${cfg.clientId ? 'done' : ''}`}>{cfg.clientId ? <Icon name="check" size={14}/> : '2'}</div>
+        <div className="setup-num" style={{background:'var(--accent-light)',color:'var(--accent)'}}>2</div>
         <div className="setup-text">
-          <h3>Get Google OAuth Client ID</h3>
-          <p>1. Go to <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" style={{color:'var(--accent)'}}>console.cloud.google.com</a> → Create a project<br/>
-          2. Enable the <strong>Google Sheets API</strong> (APIs & Services → Library)<br/>
-          3. Go to APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID<br/>
-          4. Application type: <code>Web application</code><br/>
-          5. Add Authorized JavaScript origins: <code>{window.location.origin}</code><br/>
-          6. Copy the Client ID</p>
-          <div style={{marginTop:10}}>
-            <div className="form-group">
-              <label>Paste your OAuth Client ID</label>
-              <input placeholder="123456789-abc.apps.googleusercontent.com" value={cfg.clientId || ''} onChange={e => update('clientId', e.target.value)}/>
-            </div>
-          </div>
+          <h3>Share access with your brother</h3>
+          <p>Two one-time steps:<br/>
+          1. <strong>Google Sheet:</strong> Open your Sheet → Share → add his Gmail → Editor access<br/>
+          2. <strong>Google Cloud Console:</strong> OAuth consent screen → Test users → Add his Gmail<br/><br/>
+          Then share the app URL and your PIN with him. He opens the URL, enters the PIN, signs in with his Google account — done. No config needed on his side.</p>
         </div>
       </div>
 
       <div className="setup-step">
-        <div className={`setup-num ${cfg.geminiKey ? 'done' : ''}`}>{cfg.geminiKey ? <Icon name="check" size={14}/> : '3'}</div>
-        <div className="setup-text">
-          <h3>Get Gemini API Key (for AI queries — free)</h3>
-          <p>1. Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a><br/>
-          2. Click <strong>Create API Key</strong> → select your Google project<br/>
-          3. Copy the key — it starts with <code>AIza...</code><br/>
-          Free tier: 1,500 requests/day — more than enough for personal use.</p>
-          <div style={{marginTop:10}}>
-            <div className="form-group">
-              <label>Paste your Gemini API Key</label>
-              <input type="password" placeholder="AIzaSy..." value={cfg.geminiKey || ''} onChange={e => update('geminiKey', e.target.value)}/>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="setup-step">
-        <div className={`setup-num ${cfg.accessToken ? 'done' : ''}`}>{cfg.accessToken ? <Icon name="check" size={14}/> : '4'}</div>
+        <div className={`setup-num ${cfg.accessToken ? 'done' : ''}`}>{cfg.accessToken ? <Icon name="check" size={14}/> : '3'}</div>
         <div className="setup-text">
           <h3>Sign in with Google</h3>
-          <p>Click below to authorize access to your Google Sheet. You'll be redirected to Google and back automatically.</p>
+          <p>Authorize access to your Google Sheet. You'll be redirected to Google and back automatically.</p>
           <div className="config-status">
             <div className={`dot ${cfg.accessToken ? 'dot-green' : 'dot-red'}`}/>
             <span style={{fontSize:12,color:cfg.accessToken?'var(--green)':'var(--red)'}}>{cfg.accessToken ? 'Signed in — Google Sheets access active' : 'Not signed in'}</span>
           </div>
-          {cfg.clientId && (
-            <button className="btn btn-primary" style={{marginTop:10}} onClick={signInWithGoogle}>
-              Sign in with Google →
-            </button>
-          )}
-          {!cfg.clientId && <p style={{fontSize:12,color:'var(--text-muted)',marginTop:8}}>Complete Step 2 first.</p>}
+          <button className="btn btn-primary" style={{marginTop:10}} onClick={signInWithGoogle}>Sign in with Google →</button>
         </div>
       </div>
 
       <div className="setup-step">
-        <div className="setup-num">5</div>
+        <div className="setup-num">4</div>
         <div className="setup-text">
-          <h3>Host it for free on GitHub Pages</h3>
-          <p>1. Create a GitHub account if needed, then create a new public repository<br/>
-          2. Upload this <code>index.html</code> file to the repo<br/>
-          3. Go to repo Settings → Pages → Source: <code>main</code> branch<br/>
-          4. Your app will be live at <code>https://yourusername.github.io/reponame/</code><br/>
-          5. Bookmark it on your phone — add to home screen for app-like access</p>
+          <h3>Change PIN</h3>
+          <p>Change your shared PIN at any time. All encrypted data will be re-encrypted with the new PIN.</p>
+          {!showChange
+            ? <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={() => setShowChange(true)}>Change PIN</button>
+            : <div style={{marginTop:12}}>
+                <div className="form-grid" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
+                  <div className="form-group"><label>Current PIN</label><input type="password" maxLength={4} placeholder="••••" value={oldPin} onChange={e => setOldPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>New PIN</label><input type="password" maxLength={4} placeholder="••••" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>Confirm New PIN</label><input type="password" maxLength={4} placeholder="••••" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g,''))}/></div>
+                </div>
+                {err && <div style={{fontSize:12,color:'var(--red)',marginTop:6}}>{err}</div>}
+                {msg && <div style={{fontSize:12,color:'var(--green)',marginTop:6}}>{msg}</div>}
+                <div className="btn-row">
+                  <button className="btn btn-primary" onClick={handleChangePIN}>Save New PIN</button>
+                  <button className="btn btn-secondary" onClick={() => { setShowChange(false); setErr(''); }}>Cancel</button>
+                </div>
+              </div>
+          }
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num" style={{background:'var(--red-light)',color:'var(--red)'}}>!</div>
+        <div className="setup-text">
+          <h3>Clear Cache &amp; Reset PIN</h3>
+          <p>Clears your encrypted keys from this browser's localStorage. You'll be asked to re-enter your keys and choose a new PIN on next load. <strong>Your Google Sheet data is NOT affected.</strong></p>
+          <button className="btn btn-danger btn-sm" style={{marginTop:10}} onClick={()=>{
+            if(window.confirm('Clear all cached keys and sign out? Your Sheet data is safe.')) {
+              localStorage.clear();
+              window.location.reload();
+            }
+          }}>Clear Cache &amp; Reset PIN</button>
         </div>
       </div>
 
       <div style={{marginTop:16,padding:'14px 16px',background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:8,fontSize:12,color:'var(--text-secondary)',lineHeight:1.7}}>
-        <strong style={{color:'var(--green)'}}>Your data is safe:</strong> Everything is stored in your own Google Sheet which you own. This app only reads and writes to your sheet with your permission. Nothing is stored on any server.
+        <strong style={{color:'var(--green)'}}>Your data is safe:</strong> Everything is stored in your own Google Sheet. Keys are AES-256 encrypted in localStorage. No server involved.
       </div>
     </div>
   );
@@ -1059,18 +1515,23 @@ function Setup() {
 
 // ── ROOT APP ──────────────────────────────────────────────────────────────────
 function App() {
+  const [unlocked, setUnlocked] = useState(false);
   const [page, setPage] = useState('dashboard');
   const [data, setData] = useState({ properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
 
+  // Handle OAuth token in URL hash before rendering PIN screen
+  useEffect(() => { parseTokenFromHash(); }, []);
+
   useEffect(() => {
-    parseTokenFromHash();
+    if (!unlocked) return;
     const cfg = getConfig();
     setAuthed(!!(cfg.accessToken && cfg.spreadsheetId));
-  }, []);
+  }, [unlocked]);
 
   const loadData = useCallback(async () => {
+    if (!unlocked) return;
     const cfg = getConfig();
     if (!cfg.accessToken || !cfg.spreadsheetId) return;
     setLoading(true);
@@ -1088,7 +1549,7 @@ function App() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (unlocked) loadData(); }, [loadData, unlocked]);
 
   const nav = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
@@ -1124,10 +1585,12 @@ function App() {
       case 'maintenance': return <Maintenance data={data} onRefresh={loadData}/>;
       case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
       case 'nlp': return <NLPQuery data={data}/>;
-      case 'setup': return <Setup/>;
+      case 'setup': return <Setup onChangePIN={() => {}} />;
       default: return null;
     }
   };
+
+  if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />;
 
   return (
     <>
