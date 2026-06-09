@@ -315,11 +315,12 @@ async function sheetsRequest(method, path, body = null) {
 async function readSheet(sheetName) {
   const data = await sheetsRequest('GET', `/values/${sheetName}`);
   const rows = data.values || [];
-  if (rows.length < 2) return [];
+  if (rows.length === 0) return [];
   const headers = rows[0];
-  return rows.slice(1).map((row, i) => {
+  if (rows.length === 1) return []; // only headers, no data
+  return rows.slice(1).filter(row => row && row.some(c => c !== '')).map((row, i) => {
     const obj = { _row: i + 2 };
-    headers.forEach((h, j) => { obj[h] = row[j] || ''; });
+    headers.forEach((h, j) => { obj[h] = (row[j] !== undefined ? row[j] : ''); });
     return obj;
   });
 }
@@ -337,22 +338,22 @@ async function updateRow(sheetName, rowNum, values, numCols) {
   });
 }
 
-// Initialize sheet headers if sheets are empty
+// Initialize sheet headers — always writes correct headers to row 1
+// Safe: only touches row 1, never overwrites data rows
 async function initSheets() {
   const headers = {
-    Properties: ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Occupancy', 'Notes', 'Created'],
-    Tenants: ['ID', 'Property ID', 'Name', 'Phone', 'Email', 'Advance', 'Move In Date', 'Status', 'Notes', 'Last Rent Revision'],
-    Rent: ['ID', 'Property ID', 'Tenant ID', 'Month', 'Year', 'Amount', 'Paid Date', 'Status', 'Notes'],
+    Properties:  ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Occupancy', 'Notes', 'Created'],
+    Tenants:     ['ID', 'Property ID', 'Name', 'Phone', 'Email', 'Advance', 'Move In Date', 'Status', 'Notes', 'Last Rent Revision'],
+    Rent:        ['ID', 'Property ID', 'Tenant ID', 'Month', 'Year', 'Amount', 'Paid Date', 'Status', 'Notes'],
     Maintenance: ['ID', 'Property ID', 'Date', 'Description', 'Amount', 'Vendor', 'Category'],
-    Utilities: ['Property ID', 'Electricity Number', 'Property Tax Number', 'Water Bill Number', 'Notes'],
+    Utilities:   ['Property ID', 'Electricity Number', 'Property Tax Number', 'Water Bill Number', 'Notes'],
   };
   for (const [sheet, h] of Object.entries(headers)) {
     try {
-      const data = await sheetsRequest('GET', `/values/${sheet}!A1:Z1`);
-      if (!data.values || data.values.length === 0) {
-        await sheetsRequest('PUT', `/values/${sheet}!A1:${String.fromCharCode(64+h.length)}1?valueInputOption=USER_ENTERED`, { values: [h] });
-      }
-    } catch {}
+      // Always overwrite row 1 with correct headers so column order is guaranteed
+      const endCol = String.fromCharCode(64 + h.length);
+      await sheetsRequest('PUT', `/values/${sheet}!A1:${endCol}1?valueInputOption=USER_ENTERED`, { values: [h] });
+    } catch(e) { console.warn('initSheets error for', sheet, e.message); }
   }
 }
 
@@ -508,7 +509,7 @@ function Properties({ data, onRefresh }) {
   const [mode, setMode]     = useState(null); // null | 'add' | {editing: row}
   const [saving, setSaving] = useState(false);
   const blank = { ID:'', Name:'', Address:'', Type:'Apartment', 'Rent Amount':'', Occupancy:'Occupied', Notes:'',
-    ebNum:'', taxNum:'', waterNum:'',
+    ebNum:'', taxNum:'', waterNum:'', utilNotes:'',
     tName:'', tPhone:'', tEmail:'', tAdvance:'', tMoveIn:'', tNotes:'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p => ({...p, [k]:v}));
@@ -516,7 +517,7 @@ function Properties({ data, onRefresh }) {
   const openAdd  = () => { setForm(blank); setMode('add'); };
   const openEdit = (p) => {
     const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
-    setForm({ ...blank, ...p, ebNum: u['Electricity Number']||'', taxNum: u['Property Tax Number']||'', waterNum: u['Water Bill Number']||'' });
+    setForm({ ...blank, ...p, ebNum: u['Electricity Number']||'', taxNum: u['Property Tax Number']||'', waterNum: u['Water Bill Number']||'', utilNotes: u['Notes']||'' });
     setMode({ editing: p._row, utilRow: u._row, propId: p.ID });
   };
 
@@ -529,7 +530,7 @@ function Properties({ data, onRefresh }) {
       if (mode === 'add') {
         await appendRow('Properties', [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, new Date().toLocaleDateString('en-IN')]);
         // utilities row
-        await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', '']);
+        await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', form.utilNotes||'']);
         // optional tenant
         if (form.tName && form.tPhone) {
           await appendRow('Tenants', [`T${Date.now()}`, id, form.tName, form.tPhone, form.tEmail||'', form.tAdvance||'', form.tMoveIn||'', 'Active', form.tNotes||'', '']);
@@ -539,9 +540,9 @@ function Properties({ data, onRefresh }) {
         await updateRow('Properties', mode.editing, [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, form.Created||''], 8);
         // update or create utilities row
         if (mode.utilRow) {
-          await updateRow('Utilities', mode.utilRow, [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', ''], 5);
+          await updateRow('Utilities', mode.utilRow, [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', form.utilNotes||''], 5);
         } else {
-          await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', '']);
+          await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', form.utilNotes||'']);
         }
       }
       setMode(null); onRefresh();
@@ -586,6 +587,7 @@ function Properties({ data, onRefresh }) {
             <div className="form-group"><label>Electricity Number</label><input placeholder="EB consumer no." value={form.ebNum} onChange={e=>f('ebNum',e.target.value)}/></div>
             <div className="form-group"><label>Property Tax Number</label><input placeholder="Tax ref no." value={form.taxNum} onChange={e=>f('taxNum',e.target.value)}/></div>
             <div className="form-group"><label>Water Bill Number</label><input placeholder="Water consumer no." value={form.waterNum} onChange={e=>f('waterNum',e.target.value)}/></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Utility Notes</label><input placeholder="e.g. EB office number, meter location..." value={form.utilNotes} onChange={e=>f('utilNotes',e.target.value)}/></div>
           </div>
 
           {/* Tenant details — only on add */}
@@ -1228,6 +1230,7 @@ function Utilities({ data, onRefresh }) {
                 <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Property Tax Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
                 <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Water Bill</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Water Bill Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
               </div>
+              {u['Notes'] && <div style={{marginTop:10,fontSize:12,color:'var(--text-muted)',padding:'6px 10px',background:'rgba(255,255,255,.03)',borderRadius:5}}>📝 {u['Notes']}</div>}
             </div>
           );
         })}
