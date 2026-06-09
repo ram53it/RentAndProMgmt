@@ -31,7 +31,9 @@
       --radius-lg: 12px;
       --mono: 'JetBrains Mono', monospace;
     }
+    html, body { height: 100%; }
     body { font-family: 'Inter', sans-serif; background: var(--navy); color: var(--text-primary); min-height: 100vh; display: flex; }
+    #root { display: flex; width: 100%; min-height: 100vh; }
 
     /* Sidebar */
     .sidebar { width: 220px; min-height: 100vh; background: var(--navy-mid); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
@@ -279,10 +281,10 @@ function parseTokenFromHash() {
   return null;
 }
 
-// ── CLAUDE NLP ────────────────────────────────────────────────────────────────
+// ── GEMINI NLP ────────────────────────────────────────────────────────────────
 async function askClaude(question, allData) {
   const cfg = getConfig();
-  if (!cfg.claudeKey) return 'Claude API key not set. Add it in Setup → Step 3.';
+  if (!cfg.geminiKey) return 'Gemini API key not set. Add it in Setup → Step 3.';
 
   const context = `You are a property management assistant. Answer questions about this data concisely and helpfully.
 
@@ -294,14 +296,18 @@ UTILITIES: ${JSON.stringify(allData.utilities)}
 
 Answer the user's question. For amounts, use ₹ symbol. Be specific with numbers and names. If listing items, use a short formatted list. Today's date context: ${new Date().toLocaleDateString('en-IN')}.`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.geminiKey}`, {
     method: 'POST',
-    headers: { 'x-api-key': cfg.claudeKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: context, messages: [{ role: 'user', content: question }] }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: context }] },
+      contents: [{ role: 'user', parts: [{ text: question }] }],
+      generationConfig: { maxOutputTokens: 1000 }
+    }),
   });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Claude API error'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Gemini API error'); }
   const data = await res.json();
-  return data.content[0].text;
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
 }
 
 // ── ICONS ─────────────────────────────────────────────────────────────────────
@@ -908,7 +914,7 @@ function NLPQuery({ data }) {
     <div>
       <div className="section-row">
         <h3>Ask a Question</h3>
-        <span style={{fontSize:12,color:'var(--text-muted)'}}>Powered by Claude AI</span>
+        <span style={{fontSize:12,color:'var(--text-muted)'}}>Powered by Gemini AI (free)</span>
       </div>
       <div className="nlp-panel">
         <div className="nlp-messages">
@@ -998,14 +1004,17 @@ function Setup() {
       </div>
 
       <div className="setup-step">
-        <div className={`setup-num ${cfg.claudeKey ? 'done' : ''}`}>{cfg.claudeKey ? <Icon name="check" size={14}/> : '3'}</div>
+        <div className={`setup-num ${cfg.geminiKey ? 'done' : ''}`}>{cfg.geminiKey ? <Icon name="check" size={14}/> : '3'}</div>
         <div className="setup-text">
-          <h3>Get Claude API Key (for NLP queries)</h3>
-          <p>Go to <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{color:'var(--accent)'}}>console.anthropic.com</a> → API Keys → Create Key. Free $5 credit on signup — more than enough for hundreds of queries.</p>
+          <h3>Get Gemini API Key (for AI queries — free)</h3>
+          <p>1. Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a><br/>
+          2. Click <strong>Create API Key</strong> → select your Google project<br/>
+          3. Copy the key — it starts with <code>AIza...</code><br/>
+          Free tier: 1,500 requests/day — more than enough for personal use.</p>
           <div style={{marginTop:10}}>
             <div className="form-group">
-              <label>Paste your Claude API Key</label>
-              <input type="password" placeholder="sk-ant-..." value={cfg.claudeKey || ''} onChange={e => update('claudeKey', e.target.value)}/>
+              <label>Paste your Gemini API Key</label>
+              <input type="password" placeholder="AIzaSy..." value={cfg.geminiKey || ''} onChange={e => update('geminiKey', e.target.value)}/>
             </div>
           </div>
         </div>
