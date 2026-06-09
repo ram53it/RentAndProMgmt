@@ -384,10 +384,11 @@ function parseTokenFromHash() {
   return null;
 }
 
-// ── GEMINI NLP ────────────────────────────────────────────────────────────────
+// ── AI NLP — auto-detects Claude (sk-ant-) or Gemini (AIza) key ─────────────
 async function askClaude(question, allData) {
   const cfg = getConfig();
-  if (!cfg.geminiKey) return 'Gemini API key not set. Add it in Setup → Step 3.';
+  const key = cfg.geminiKey || '';
+  if (!key) return 'AI API key not set. Add it in Setup → Step 3.';
 
   const context = `You are a property management assistant. Answer questions about this data concisely and helpfully.
 
@@ -399,18 +400,32 @@ UTILITIES: ${JSON.stringify(allData.utilities)}
 
 Answer the user's question. For amounts, use ₹ symbol. Be specific with numbers and names. If listing items, use a short formatted list. Today's date context: ${new Date().toLocaleDateString('en-IN')}.`;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${cfg.geminiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: context }] },
-      contents: [{ role: 'user', parts: [{ text: question }] }],
-      generationConfig: { maxOutputTokens: 1000 }
-    }),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Gemini API error'); }
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
+  // Auto-detect key type
+  const isClaude = key.startsWith('sk-ant-');
+
+  if (isClaude) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, system: context, messages: [{ role: 'user', content: question }] }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Claude API error'); }
+    const data = await res.json();
+    return data.content[0].text;
+  } else {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: context }] },
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        generationConfig: { maxOutputTokens: 1000 }
+      }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Gemini API error'); }
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
+  }
 }
 
 // ── ICONS ─────────────────────────────────────────────────────────────────────
@@ -1377,7 +1392,14 @@ function PinScreen({ onUnlock }) {
         <div className="pin-setup-form">
           <div className="form-group"><label>Google Sheet ID</label><input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={form.spreadsheetId} onChange={e => setForm({...form, spreadsheetId: e.target.value})}/></div>
           <div className="form-group"><label>Google OAuth Client ID</label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
-          <div className="form-group"><label>Gemini API Key</label><input type="password" placeholder="AIzaSy..." value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/></div>
+          <div className="form-group">
+              <label>AI API Key (Claude or Gemini)</label>
+              <input type="password" placeholder="sk-ant-... (Claude)  or  AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
+              <div style={{fontSize:11,color:'var(--text-muted)',marginTop:5,lineHeight:1.6}}>
+                <strong style={{color:'var(--accent)'}}>Claude:</strong> <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> → API Keys ($5 free credit) &nbsp;|&nbsp;
+                <strong style={{color:'var(--green)'}}>Gemini:</strong> <a href="https://aistudio.google.com/apikey" target="_blank" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a> → Create Key on a <strong>new project</strong> with no billing
+              </div>
+            </div>
           {error && <div className="pin-error">{error}</div>}
           <button className="btn btn-primary" style={{width:'100%',marginTop:8,justifyContent:'center'}} onClick={handleSetupNext}>Next — Choose PIN →</button>
         </div>
@@ -1446,7 +1468,7 @@ function Setup({ onChangePIN }) {
         <div className="setup-num done"><Icon name="check" size={14}/></div>
         <div className="setup-text">
           <h3>Keys stored encrypted ✓</h3>
-          <p>Your Sheet ID, Client ID, and Gemini key are encrypted with AES-256 using your PIN. They are never stored in plain text and never appear in source code. Safe even with a public GitHub repo.</p>
+          <p>Your Sheet ID, Client ID, and AI key (Claude or Gemini) are encrypted with AES-256 using your PIN. Never stored in plain text, never in source code. Safe with a public repo.</p>
           <div style={{marginTop:10,display:'flex',gap:12,flexWrap:'wrap'}}>
             <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>🔒 AES-256-GCM encrypted</div>
             <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>✓ Safe with public repo</div>
