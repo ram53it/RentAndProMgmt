@@ -513,7 +513,7 @@ function Properties({ data, onRefresh }) {
   const [saving, setSaving] = useState(false);
   const blank = { ID:'', Name:'', Address:'', Type:'Apartment', 'Rent Amount':'', Occupancy:'Occupied', Notes:'',
     ebNum:'', taxNum:'', waterNum:'', utilNotes:'',
-    tName:'', tPhone:'', tEmail:'', tAdvance:'', tMoveIn:'', tNotes:'' };
+    tName:'', tPhone:'', tEmail:'', tAdvance:'', tMoveIn:'', tLastRentRevision:'', tNotes:'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p => ({...p, [k]:v}));
 
@@ -536,7 +536,7 @@ function Properties({ data, onRefresh }) {
         await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.waterNum||'', form.utilNotes||'']);
         // optional tenant
         if (form.tName && form.tPhone) {
-          await appendRow('Tenants', [`T${Date.now()}`, id, form.tName, form.tPhone, form.tEmail||'', form.tAdvance||'', form.tMoveIn||'', 'Active', form.tNotes||'', '']);
+          await appendRow('Tenants', [`T${Date.now()}`, id, form.tName, form.tPhone, form.tEmail||'', form.tAdvance||'', form.tMoveIn||'', 'Active', form.tNotes||'', form.tLastRentRevision||'']);
         }
       } else {
         // update property row
@@ -603,6 +603,7 @@ function Properties({ data, onRefresh }) {
                 <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.tEmail} onChange={e=>f('tEmail',e.target.value)}/></div>
                 <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.tAdvance} onChange={e=>f('tAdvance',e.target.value)}/></div>
                 <div className="form-group"><label>Move-in Date</label><input type="date" value={form.tMoveIn} onChange={e=>f('tMoveIn',e.target.value)}/></div>
+                <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form.tLastRentRevision} onChange={e=>f('tLastRentRevision',e.target.value)}/></div>
                 <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.tNotes} onChange={e=>f('tNotes',e.target.value)}/></div>
               </div>
             </>
