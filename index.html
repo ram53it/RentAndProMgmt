@@ -882,11 +882,13 @@ function Rent({ data, onRefresh }) {
   const [receipt, setReceipt]= useState(null);
   const [viewTab, setViewTab]= useState('month');
   const [filterProp, setFilterProp] = useState('');
-  const [filterMonth, setFM] = useState(new Date().toLocaleString('en-IN',{month:'long'}));
-  const [filterYear,  setFY] = useState(String(new Date().getFullYear()));
+  const [filterMonth, setFM] = useState(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).toLocaleString('en-IN',{month:'long'}));
+  const [filterYear,  setFY] = useState(String(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).getFullYear()));
 
-  const curMonth = new Date().toLocaleString('en-IN',{month:'long'});
-  const curYear  = String(new Date().getFullYear());
+  const _now       = new Date();
+  const _lastMonth = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+  const curMonth   = _lastMonth.toLocaleString('en-IN',{month:'long'});
+  const curYear    = String(_lastMonth.getFullYear());
 
   // blank form — selectedMonths is array of {month, year}
   const blank = {
