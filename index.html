@@ -338,8 +338,7 @@ async function updateRow(sheetName, rowNum, values, numCols) {
   });
 }
 
-// Initialize sheet headers — always writes correct headers to row 1
-// Safe: only touches row 1, never overwrites data rows
+// Initialize sheet headers — only writes header if row 1 is completely empty
 async function initSheets() {
   const headers = {
     Properties:  ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Occupancy', 'Notes', 'Created'],
@@ -350,9 +349,13 @@ async function initSheets() {
   };
   for (const [sheet, h] of Object.entries(headers)) {
     try {
-      // Always overwrite row 1 with correct headers so column order is guaranteed
-      const endCol = String.fromCharCode(64 + h.length);
-      await sheetsRequest('PUT', `/values/${sheet}!A1:${endCol}1?valueInputOption=USER_ENTERED`, { values: [h] });
+      const existing = await sheetsRequest('GET', `/values/${sheet}!A1:A1`);
+      const hasHeader = existing.values && existing.values.length > 0 && existing.values[0][0];
+      if (!hasHeader) {
+        const endCol = String.fromCharCode(64 + h.length);
+        await sheetsRequest('PUT', `/values/${sheet}!A1:${endCol}1?valueInputOption=USER_ENTERED`, { values: [h] });
+        console.log('initSheets: wrote header for', sheet);
+      }
     } catch(e) { console.warn('initSheets error for', sheet, e.message); }
   }
 }
@@ -1523,6 +1526,7 @@ function App() {
   const [data, setData] = useState({ properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   // Handle OAuth token in URL hash before rendering PIN screen
   useEffect(() => { parseTokenFromHash(); }, []);
@@ -1538,19 +1542,26 @@ function App() {
     const cfg = getConfig();
     if (!cfg.accessToken || !cfg.spreadsheetId) return;
     setLoading(true);
+    setLoadError('');
     try {
       await initSheets();
       const [properties, tenants, rent, maintenance, utilities] = await Promise.all([
         readSheet('Properties'), readSheet('Tenants'), readSheet('Rent'), readSheet('Maintenance'), readSheet('Utilities'),
       ]);
+      console.log('Loaded — Properties:', properties.length, 'Tenants:', tenants.length, 'Rent:', rent.length);
       setData({ properties, tenants, rent, maintenance, utilities });
       setAuthed(true);
     } catch (e) {
-      if (e.message.includes('Session expired') || e.message.includes('Not authenticated')) setAuthed(false);
-      console.error(e);
+      console.error('loadData error:', e);
+      if (e.message.includes('Session expired') || e.message.includes('Not authenticated')) {
+        setAuthed(false);
+        setLoadError('Session expired — please sign in again in Setup.');
+      } else {
+        setLoadError('Load error: ' + e.message);
+      }
     }
     setLoading(false);
-  }, []);
+  }, [unlocked]);
 
   useEffect(() => { if (unlocked) loadData(); }, [loadData, unlocked]);
 
@@ -1629,11 +1640,28 @@ function App() {
             <p>{subtitle}</p>
           </div>
           {authed && page !== 'setup' && (
-            <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
-              {loading ? <span className="spinner"/> : '↻'} Refresh
-            </button>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {loading && <span style={{fontSize:12,color:'var(--text-muted)'}}>Loading...</span>}
+              <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
+                {loading ? <span className="spinner"/> : '↻'} Refresh
+              </button>
+              <button className="btn btn-secondary btn-sm" title="Debug: show raw sheet data" onClick={async()=>{
+                try {
+                  const cfg = getConfig();
+                  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${cfg.spreadsheetId}/values/Properties`, { headers:{Authorization:'Bearer '+cfg.accessToken}});
+                  const d = await res.json();
+                  alert('Properties sheet raw data:\n\nRows returned: ' + (d.values?.length||0) + '\n\nRow 1 (headers): ' + JSON.stringify(d.values?.[0]) + '\n\nRow 2 (first data): ' + JSON.stringify(d.values?.[1]) + '\n\nFull response: ' + JSON.stringify(d).slice(0,500));
+                } catch(e){ alert('Debug error: '+e.message); }
+              }}>🔍 Debug</button>
+            </div>
           )}
         </div>
+        {loadError && (
+          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 24px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span>⚠️ {loadError}</span>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+          </div>
+        )}
         <div className="content">{renderPage()}</div>
       </main>
     </>
