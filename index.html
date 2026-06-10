@@ -1636,6 +1636,19 @@ function NLPQuery({ data }) {
 
 
 // ── PIN SCREEN ───────────────────────────────────────────────────────────────
+// If URL contains ?cfg=... load that encrypted blob into localStorage automatically
+(function() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const blob = params.get('cfg');
+    if (blob) {
+      localStorage.setItem(STORE_KEY, decodeURIComponent(blob));
+      // Clean URL so the blob isn't visible after load
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e) {}
+})();
+
 function PinScreen({ onUnlock }) {
   const isFirstTime = !hasEncryptedConfig();
   const [mode, setMode] = useState(isFirstTime ? 'setup' : 'unlock');
@@ -1644,6 +1657,10 @@ function PinScreen({ onUnlock }) {
   const [form, setForm] = useState({ spreadsheetId: '', clientId: '', geminiKey: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [shareCode, setShareCode] = useState('');
+  const [showShare, setShowShare] = useState(false);
+  const [importCode, setImportCode] = useState('');
+  const [showImport, setShowImport] = useState(false);
   const PIN_LEN = 4;
 
   const handleKey = async (k) => {
@@ -1654,7 +1671,6 @@ function PinScreen({ onUnlock }) {
     setPin(next);
     if (next.length < PIN_LEN) return;
 
-    // PIN complete
     if (mode === 'unlock') {
       setLoading(true);
       const cfg = await loadConfig(next);
@@ -1671,8 +1687,12 @@ function PinScreen({ onUnlock }) {
         setLoading(true);
         await persistConfig(next, form);
         setRuntimeConfig(form);
-        onUnlock();
+        // Generate share code immediately after setup
+        const blob = localStorage.getItem(STORE_KEY);
+        if (blob) setShareCode(blob);
+        setShowShare(true);
         setLoading(false);
+        // Don't call onUnlock yet — show share screen first
       } else {
         setError('PINs do not match — try again');
         setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
@@ -1697,34 +1717,76 @@ function PinScreen({ onUnlock }) {
     setMode('confirm');
   };
 
+  const handleImport = () => {
+    const code = importCode.trim();
+    if (!code) { setError('Paste the share code first.'); return; }
+    try {
+      localStorage.setItem(STORE_KEY, code);
+      setMode('unlock');
+      setPin('');
+      setError('');
+      setShowImport(false);
+    } catch(e) { setError('Invalid code — ask the owner to share again.'); }
+  };
+
+  const copyShareLink = () => {
+    const blob = localStorage.getItem(STORE_KEY);
+    if (!blob) return;
+    const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+    navigator.clipboard.writeText(url).then(()=>alert('Share link copied!\n\nSend this to your brother. When he opens it, the app auto-loads — he just needs to enter the PIN.'));
+  };
+
   const keys = ['1','2','3','4','5','6','7','8','9','','0','del'];
+
+  // Share screen — shown after first setup
+  if (showShare) return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo" style={{background:'var(--green)'}}>✓</div>
+        <div className="pin-title">Setup Complete!</div>
+        <div className="pin-sub">Share access with your brother by sending him the share link. He opens it, enters the PIN, and he's in — no re-entering keys.</div>
+        <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',marginBottom:10}} onClick={copyShareLink}>
+          📋 Copy Share Link for Brother
+        </button>
+        <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:16,lineHeight:1.6,padding:'8px',background:'rgba(0,0,0,.2)',borderRadius:6}}>
+          The link contains your encrypted config. Only the PIN can decrypt it — safe to share over WhatsApp.
+        </div>
+        <button className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}} onClick={()=>{ setRuntimeConfig(form); onUnlock(); }}>
+          Enter App →
+        </button>
+      </div>
+    </div>
+  );
 
   if (mode === 'setup') return (
     <div className="pin-screen">
       <div className="pin-box">
         <div className="pin-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
         <div className="pin-title">First-time Setup</div>
-        <div className="pin-sub">Enter your keys below. They'll be encrypted with a PIN you choose — never stored in plain text.</div>
+        <div className="pin-sub">Enter your keys below. They'll be encrypted with a PIN — never stored in plain text.</div>
         <div className="pin-setup-form">
           <div className="form-group"><label>Google Sheet ID</label><input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={form.spreadsheetId} onChange={e => setForm({...form, spreadsheetId: e.target.value})}/></div>
           <div className="form-group"><label>Google OAuth Client ID</label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
           <div className="form-group">
-              <label>AI API Key (Claude or Gemini) — <span style='color:var(--text-muted);font-weight:400'>optional, can add later</span></label>
-              <input type="password" placeholder="sk-ant-... (Claude)  or  AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
-              <div style={{fontSize:11,color:'var(--text-muted)',marginTop:5,lineHeight:1.6}}>
-                <strong style={{color:'var(--accent)'}}>Claude:</strong> <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> → API Keys ($5 free credit) &nbsp;|&nbsp;
-                <strong style={{color:'var(--green)'}}>Gemini:</strong> <a href="https://aistudio.google.com/apikey" target="_blank" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a> → Create Key on a <strong>new project</strong> with no billing
-              </div>
-            </div>
+            <label>AI API Key — <span style={{color:'var(--text-muted)',fontWeight:400}}>optional</span></label>
+            <input type="password" placeholder="sk-ant-... (Claude) or AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
+          </div>
           {error && <div className="pin-error">{error}</div>}
           <button className="btn btn-primary" style={{width:'100%',marginTop:8,justifyContent:'center'}} onClick={handleSetupNext}>Next — Choose PIN →</button>
+          <div style={{textAlign:'center',marginTop:12}}>
+            <span className="pin-toggle" onClick={()=>setShowImport(o=>!o)}>Already have a share code? Import it</span>
+          </div>
+          {showImport && <div style={{marginTop:10}}>
+            <div className="form-group"><label>Paste Share Code</label><textarea style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:6,padding:'8px',color:'var(--text-primary)',fontSize:11,width:'100%',height:80,fontFamily:'monospace'}} value={importCode} onChange={e=>setImportCode(e.target.value)} placeholder="Paste the share code here..."/></div>
+            <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} onClick={handleImport}>Import & Enter PIN</button>
+          </div>}
         </div>
       </div>
     </div>
   );
 
-  const modeLabel = mode === 'choose-pin' ? 'Choose a 4-digit PIN' : mode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN';
-  const modeSubLabel = mode === 'choose-pin' ? 'Share this PIN with anyone you give app access to' : mode === 'confirm' ? 'Enter the same PIN again' : 'Keys are stored encrypted — PIN never leaves your device';
+  const modeLabel    = mode === 'choose-pin' ? 'Choose a 4-digit PIN' : mode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN';
+  const modeSubLabel = mode === 'choose-pin' ? 'You and your brother will use this PIN' : mode === 'confirm' ? 'Enter the same PIN again to confirm' : 'Keys are encrypted — PIN never leaves your device';
 
   return (
     <div className="pin-screen">
@@ -1746,11 +1808,12 @@ function PinScreen({ onUnlock }) {
           ))}
         </div>
         <div className="pin-error">{error}</div>
-        {mode === 'unlock' && (
-          <span className="pin-toggle" onClick={() => { setMode('setup'); setPin(''); localStorage.removeItem(STORE_KEY); }}>
+        {mode === 'unlock' && (<>
+          <span className="pin-toggle" onClick={copyShareLink}>📋 Get share link (for new browser)</span>
+          <span className="pin-toggle" style={{marginTop:6}} onClick={() => { setMode('setup'); setPin(''); localStorage.removeItem(STORE_KEY); }}>
             Reset &amp; re-enter keys
           </span>
-        )}
+        </>)}
       </div>
     </div>
   );
@@ -1797,10 +1860,15 @@ function Setup({ onChangePIN }) {
         <div className="setup-num" style={{background:'var(--accent-light)',color:'var(--accent)'}}>2</div>
         <div className="setup-text">
           <h3>Share access with your brother</h3>
-          <p>Two one-time steps:<br/>
-          1. <strong>Google Sheet:</strong> Open your Sheet → Share → add his Gmail → Editor access<br/>
-          2. <strong>Google Cloud Console:</strong> OAuth consent screen → Test users → Add his Gmail<br/><br/>
-          Then share the app URL and your PIN with him. He opens the URL, enters the PIN, signs in with his Google account — done. No config needed on his side.</p>
+          <p>1. <strong>Google Sheet:</strong> Open your Sheet → Share → add his Gmail → Editor access<br/>
+          2. <strong>Google Cloud Console:</strong> OAuth consent screen → Test users → Add his Gmail<br/>
+          3. Send him the share link below — he opens it, enters the PIN, signs in with Google. Done.</p>
+          <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={()=>{
+            const blob = localStorage.getItem(STORE_KEY);
+            if (!blob) { alert('No config found — complete setup first.'); return; }
+            const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+            navigator.clipboard.writeText(url).then(()=>alert('Share link copied!\n\nSend this to your brother over WhatsApp. When he opens it, the app auto-loads and he just needs to enter the PIN.'));
+          }}>📋 Copy Share Link</button>
         </div>
       </div>
 
