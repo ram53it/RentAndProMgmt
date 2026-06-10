@@ -1105,6 +1105,19 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
                 <option value="">Select property</option>
                 {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
+              {/* Tenant confirmation strip */}
+              {form['Property ID'] && (()=>{
+                const t = data.tenants.find(t=>t['Property ID']===form['Property ID']&&t.Status==='Active');
+                return t
+                  ? <div style={{marginTop:6,padding:'8px 12px',background:'var(--green-light)',border:'1px solid rgba(16,185,129,.25)',borderRadius:6,display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+                      <span style={{fontSize:12,fontWeight:600,color:'var(--green)'}}>✓ Active Tenant</span>
+                      <span style={{fontSize:13,fontWeight:500,color:'var(--text-primary)'}}>{t.Name}</span>
+                      <span className="mono" style={{fontSize:13,color:'var(--text-secondary)'}}>{t.Phone}</span>
+                    </div>
+                  : <div style={{marginTop:6,padding:'8px 12px',background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:6,fontSize:12,color:'var(--red)'}}>
+                      ⚠️ No active tenant for this property
+                    </div>;
+              })()}
             </div>
             <div className="form-group"><label>Per Month Amount (₹) *</label>
               <input type="number" value={form.perMonthAmount} onChange={e=>{
