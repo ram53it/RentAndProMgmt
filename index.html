@@ -464,44 +464,61 @@ function SaveBtn({ onClick, saving }) {
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({ data, loading }) {
-  const now = new Date();
-  const currentMonth = now.toLocaleString('en-IN', { month: 'long' });
-  const currentYear  = now.getFullYear();
+  const now       = new Date();
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = lastMonthDate.toLocaleString('en-IN', { month: 'long' });
+  const lastYear  = String(lastMonthDate.getFullYear());
 
   const totalProperties    = data.properties.length;
   const activeTenantsCount = data.tenants.filter(t => t.Status === 'Active').length;
   const vacantCount        = data.properties.filter(p => p['Occupancy'] === 'Vacant').length;
+  const billableProps      = data.properties.filter(p => p.Occupancy !== 'Vacant' && p.Occupancy !== 'NotApplicable' && p.Occupancy !== 'OwnUsage');
 
-  const thisMonthRent   = data.rent.filter(r => r.Month === currentMonth && String(r.Year) === String(currentYear));
-  const collectedAmount = thisMonthRent.filter(r => r.Status === 'Paid').reduce((s,r) => s + Number(r.Amount||0), 0);
-  const pendingCount    = totalProperties - thisMonthRent.filter(r => r.Status === 'Paid').length;
+  const lastMonthRent   = data.rent.filter(r => r.Month === lastMonth && r.Year === lastYear);
+  const collectedAmount = lastMonthRent.filter(r => r.Status === 'Paid').reduce((s,r) => s + Number(r.Amount||0), 0);
+  const paidPropIds     = lastMonthRent.filter(r => r.Status === 'Paid').map(r => r['Property ID']);
+  const pendingCount    = billableProps.filter(p => !paidPropIds.includes(p.ID)).length;
   const maintenanceTotal= data.maintenance.reduce((s,m) => s + Number(m.Amount||0), 0);
+
+  // Sort: pending first, then paid, then N/A
+  const sortedProps = [...data.properties].sort((a, b) => {
+    const skipA = a.Occupancy==='Vacant'||a.Occupancy==='NotApplicable'||a.Occupancy==='OwnUsage';
+    const skipB = b.Occupancy==='Vacant'||b.Occupancy==='NotApplicable'||b.Occupancy==='OwnUsage';
+    const paidA = paidPropIds.includes(a.ID);
+    const paidB = paidPropIds.includes(b.ID);
+    if (skipA && !skipB) return 1;
+    if (!skipA && skipB) return -1;
+    if (!paidA && paidB) return -1;
+    if (paidA && !paidB) return 1;
+    return 0;
+  });
 
   return (
     <div>
       <div className="stats-row">
         <div className="stat-card"><div className="stat-label">Properties</div><div className="stat-value">{totalProperties}</div><div className="stat-sub">{vacantCount} vacant</div></div>
         <div className="stat-card"><div className="stat-label">Active Tenants</div><div className="stat-value green">{activeTenantsCount}</div><div className="stat-sub">Currently occupied</div></div>
-        <div className="stat-card"><div className="stat-label">Rent Collected — {currentMonth}</div><div className="stat-value green">{fmtINR(collectedAmount)}</div><div className="stat-sub">{thisMonthRent.filter(r=>r.Status==='Paid').length} of {totalProperties} properties</div></div>
-        <div className="stat-card"><div className="stat-label">Pending Rent</div><div className="stat-value" style={{color:pendingCount>0?'var(--red)':'var(--green)'}}>{pendingCount}</div><div className="stat-sub">Properties not paid</div></div>
+        <div className="stat-card"><div className="stat-label">Rent Collected — {lastMonth} {lastYear}</div><div className="stat-value green">{fmtINR(collectedAmount)}</div><div className="stat-sub">{paidPropIds.length} of {billableProps.length} properties</div></div>
+        <div className="stat-card"><div className="stat-label">Pending — {lastMonth}</div><div className="stat-value" style={{color:pendingCount>0?'var(--red)':'var(--green)'}}>{pendingCount}</div><div className="stat-sub">Properties not paid</div></div>
         <div className="stat-card"><div className="stat-label">Maintenance Spent</div><div className="stat-value gold">{fmtINR(maintenanceTotal)}</div><div className="stat-sub">All time</div></div>
       </div>
       <div className="two-col">
         <div className="card">
-          <div className="card-title">Properties Overview</div>
+          <div className="card-title">Properties Overview — {lastMonth} {lastYear}</div>
           {data.properties.length === 0 ? <div className="empty"><p>No properties yet.</p></div> :
           <div className="table-wrap"><table>
             <thead><tr><th>Property</th><th>Tenant</th><th>Rent</th><th>Occupancy</th><th>Rent Status</th></tr></thead>
-            <tbody>{data.properties.map(p => {
+            <tbody>{sortedProps.map(p => {
               const tenant = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
-              const paid   = data.rent.find(r => r['Property ID'] === p.ID && r.Month === currentMonth && String(r.Year) === String(currentYear) && r.Status === 'Paid');
-              const vacant = p.Occupancy === 'Vacant';
+              const paid   = paidPropIds.includes(p.ID);
+              const skip   = p.Occupancy==='Vacant'||p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage';
+              const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
               return (<tr key={p.ID}>
                 <td className="name">{p.Name}</td>
                 <td>{tenant ? tenant.Name : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                 <td className="mono">{fmtINR(p['Rent Amount'])}</td>
-                <td><span className={`badge ${vacant?'badge-gold':'badge-green'}`}>{p.Occupancy||'Occupied'}</span></td>
-                <td><span className={`badge ${paid?'badge-green':'badge-red'}`}>{vacant?'N/A':paid?'Paid':'Pending'}</span></td>
+                <td><span className={`badge ${occColor}`}>{p.Occupancy||'Occupied'}</span></td>
+                <td><span className={`badge ${skip?'badge-blue':paid?'badge-green':'badge-red'}`}>{skip?'N/A':paid?'Paid':'Pending'}</span></td>
               </tr>);
             })}</tbody>
           </table></div>}
