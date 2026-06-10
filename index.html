@@ -523,7 +523,7 @@ function Dashboard({ data, loading }) {
 }
 
 // ── PROPERTIES ───────────────────────────────────────────────────────────────
-function Properties({ data, onRefresh }) {
+function Properties({ data, onRefresh, onGoToRent }) {
   const [mode, setMode]     = useState(null); // null | 'add' | {editing: row}
   const [saving, setSaving] = useState(false);
   const blank = { ID:'', Name:'', Address:'', Type:'Apartment', 'Rent Amount':'', Occupancy:'Occupied', Notes:'',
@@ -639,7 +639,7 @@ function Properties({ data, onRefresh }) {
         ? <div className="card"><div className="empty"><Icon name="home" size={40}/><p>No properties yet.</p></div></div>
         : <div className="gap-12">
             {data.properties.map(p => (
-              <PropCard key={p.ID} p={p} data={data} onEdit={openEdit}/>
+              <PropCard key={p.ID} p={p} data={data} onEdit={openEdit} onGoToRent={onGoToRent}/>
             ))}
           </div>
       }
@@ -647,7 +647,7 @@ function Properties({ data, onRefresh }) {
   );
 }
 
-function PropCard({ p, data, onEdit }) {
+function PropCard({ p, data, onEdit, onGoToRent }) {
   const [open, setOpen] = useState(false);
   const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
   const tenant  = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
@@ -683,10 +683,15 @@ function PropCard({ p, data, onEdit }) {
           <div><div className="stat-label">Rent/Month</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:4}}>{fmtINR(p['Rent Amount'])}</div></div>
           <div><div className="stat-label">Occupancy</div><span className={`badge ${occColor}`} style={{marginTop:4,display:'inline-block'}}>{p.Occupancy||'Occupied'}</span></div>
           {p.Notes && <div><div className="stat-label">Notes</div><div style={{fontSize:13,marginTop:4,color:'var(--text-secondary)'}}>{p.Notes}</div></div>}
+          <div style={{display:'flex',alignItems:'flex-end'}}>
+            <button className="btn btn-secondary btn-sm" style={{gap:5}} onClick={e=>{e.stopPropagation();onGoToRent&&onGoToRent(p.ID);}}>
+              💰 View Rent History →
+            </button>
+          </div>
         </div>
 
         {/* Tenant section */}
-        <CollapsibleSection title={`👤 Tenants (${allTens.filter(t=>t.Status==='Active').length} active)`}>
+        <CollapsibleSection title={`👤 Tenants (${allTens.filter(t=>t.Status==='Active').length} active)`} defaultOpen={true}>
           {allTens.length===0
             ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
             : allTens.map(t=>(
@@ -703,7 +708,7 @@ function PropCard({ p, data, onEdit }) {
         </CollapsibleSection>
 
         {/* Utility section */}
-        <CollapsibleSection title="⚡ Utility Numbers">
+        <CollapsibleSection title="⚡ Utility Numbers" defaultOpen={true}>
           <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
             <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{u['Electricity Number']||'—'}</div></div>
             <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{u['Property Tax Number']||'—'}</div></div>
@@ -950,12 +955,16 @@ function ReceiptModal({ receipt, onClose }) {
 }
 
 // ── RENT ─────────────────────────────────────────────────────────────────────
-function Rent({ data, onRefresh }) {
+function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
   const [mode, setMode]      = useState(null);
   const [saving, setSaving]  = useState(false);
   const [receipt, setReceipt]= useState(null);
-  const [viewTab, setViewTab]= useState('month');
-  const [filterProp, setFilterProp] = useState('');
+  const [viewTab, setViewTab]= useState(initialPropId ? 'property' : 'month');
+  const [filterProp, setFilterProp] = useState(initialPropId || '');
+
+  useEffect(() => {
+    if (initialPropId) { setViewTab('property'); setFilterProp(initialPropId); onClearTarget&&onClearTarget(); }
+  }, [initialPropId]);
   const [filterMonth, setFM] = useState(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).toLocaleString('en-IN',{month:'long'}));
   const [filterYear,  setFY] = useState(String(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).getFullYear()));
 
@@ -1311,7 +1320,7 @@ function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
         </div>
 
         {/* Tenant collapsible */}
-        <CollapsibleSection title={`👤 Tenant Details (${allTenants.filter(t=>t.Status==='Active').length} active)`}>
+        <CollapsibleSection title={`👤 Tenant Details (${allTenants.filter(t=>t.Status==='Active').length} active)`} defaultOpen={true}>
           {allTenants.length===0
             ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
             : allTenants.map(t=>(
@@ -1328,7 +1337,7 @@ function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
         </CollapsibleSection>
 
         {/* Utility collapsible */}
-        <CollapsibleSection title="⚡ Utility Numbers">
+        <CollapsibleSection title="⚡ Utility Numbers" defaultOpen={true}>
           <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
             <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{utility['Electricity Number']||'—'}</div></div>
             <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{utility['Property Tax Number']||'—'}</div></div>
@@ -1804,6 +1813,7 @@ function Setup({ onChangePIN }) {
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [page, setPage] = useState('dashboard');
+  const [rentTarget, setRentTarget] = useState(null);
   const [data, setData] = useState({ properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -1874,9 +1884,9 @@ function App() {
     }
     switch (page) {
       case 'dashboard': return <Dashboard data={data} loading={loading}/>;
-      case 'properties': return <Properties data={data} onRefresh={loadData}/>;
+      case 'properties': return <Properties data={data} onRefresh={loadData} onGoToRent={(propId)=>{ setRentTarget(propId); setPage('rent'); }}/>;
       case 'tenants': return <Tenants data={data} onRefresh={loadData}/>;
-      case 'rent': return <Rent data={data} onRefresh={loadData}/>;
+      case 'rent': return <Rent data={data} onRefresh={loadData} initialPropId={rentTarget} onClearTarget={()=>setRentTarget(null)}/>;
       case 'maintenance': return <Maintenance data={data} onRefresh={loadData}/>;
       case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
       case 'nlp': return <NLPQuery data={data}/>;
