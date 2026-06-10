@@ -593,7 +593,10 @@ function Properties({ data, onRefresh }) {
             <div className="form-group"><label>Monthly Rent (₹) *</label><input type="number" placeholder="15000" value={form['Rent Amount']} onChange={e=>f('Rent Amount',e.target.value)}/></div>
             <div className="form-group"><label>Occupancy Status</label>
               <select value={form.Occupancy} onChange={e=>f('Occupancy',e.target.value)}>
-                <option value="Occupied">Occupied</option><option value="Vacant">Vacant</option>
+                <option value="Occupied">Occupied</option>
+                <option value="Vacant">Vacant</option>
+                <option value="NotApplicable">Not Applicable</option>
+                <option value="OwnUsage">Own Usage</option>
               </select>
             </div>
             <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
@@ -634,24 +637,95 @@ function Properties({ data, onRefresh }) {
 
       {data.properties.length === 0
         ? <div className="card"><div className="empty"><Icon name="home" size={40}/><p>No properties yet.</p></div></div>
-        : <div className="card"><div className="table-wrap"><table>
-            <thead><tr><th>Name</th><th>Type</th><th>Rent/Month</th><th>Occupancy</th><th>EB No.</th><th>Tax No.</th><th>Tax Value</th><th>Water No.</th><th></th></tr></thead>
-            <tbody>{data.properties.map(p => {
-              const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
-              return (<tr key={p.ID}>
-                <td className="name">{p.Name}<div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{p.Address}</div></td>
-                <td><span className="badge badge-blue">{p.Type}</span></td>
-                <td className="mono">{fmtINR(p['Rent Amount'])}</td>
-                <td><span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':'badge-green'}`}>{p.Occupancy||'Occupied'}</span></td>
-                <td className="mono" style={{fontSize:11}}>{u['Electricity Number']||'—'}</td>
-                <td className="mono" style={{fontSize:11}}>{u['Property Tax Number']||'—'}</td>
-                <td className="mono" style={{fontSize:11}}>{u['Property Tax Value'] ? fmtINR(u['Property Tax Value']) : '—'}</td>
-                <td className="mono" style={{fontSize:11}}>{u['Water Bill Number']||'—'}</td>
-                <td><EditBtn onClick={()=>openEdit(p)}/></td>
-              </tr>);
-            })}</tbody>
-          </table></div></div>
+        : <div className="gap-12">
+            {data.properties.map(p => (
+              <PropCard key={p.ID} p={p} data={data} onEdit={openEdit}/>
+            ))}
+          </div>
       }
+    </div>
+  );
+}
+
+function PropCard({ p, data, onEdit }) {
+  const [open, setOpen] = useState(false);
+  const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+  const tenant  = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
+  const allTens = data.tenants.filter(t => t['Property ID'] === p.ID);
+  const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+  const occIcon  = p.Occupancy==='Vacant'?'🔓':p.Occupancy==='OwnUsage'?'🏡':p.Occupancy==='NotApplicable'?'📋':'🏠';
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      {/* Header row — always visible */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background:open?'var(--surface-2)':'var(--surface)'}}
+        onClick={()=>setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{occIcon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{p.Name}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{p.Address||p.Type}</div>
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(p['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+          </div>
+          <span className={`badge ${occColor}`}>{p.Occupancy||'Occupied'}</span>
+          <EditBtn onClick={e=>{e.stopPropagation();onEdit(p);}}/>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'16px 18px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:14,marginBottom:16}}>
+          <div><div className="stat-label">Type</div><span className="badge badge-blue" style={{marginTop:4,display:'inline-block'}}>{p.Type}</span></div>
+          <div><div className="stat-label">Rent/Month</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:4}}>{fmtINR(p['Rent Amount'])}</div></div>
+          <div><div className="stat-label">Occupancy</div><span className={`badge ${occColor}`} style={{marginTop:4,display:'inline-block'}}>{p.Occupancy||'Occupied'}</span></div>
+          {p.Notes && <div><div className="stat-label">Notes</div><div style={{fontSize:13,marginTop:4,color:'var(--text-secondary)'}}>{p.Notes}</div></div>}
+        </div>
+
+        {/* Tenant section */}
+        <CollapsibleSection title={`👤 Tenants (${allTens.filter(t=>t.Status==='Active').length} active)`}>
+          {allTens.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
+            : allTens.map(t=>(
+              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
+                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
+              </div>
+            ))
+          }
+        </CollapsibleSection>
+
+        {/* Utility section */}
+        <CollapsibleSection title="⚡ Utility Numbers">
+          <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{u['Electricity Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{u['Property Tax Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{u['Property Tax Value']?fmtINR(u['Property Tax Value']):'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{u['Water Bill Number']||'—'}</div></div>
+            {u['Notes']&&<div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{u['Notes']}</div></div>}
+          </div>
+        </CollapsibleSection>
+      </div>}
+    </div>
+  );
+}
+
+function CollapsibleSection({ title, children, defaultOpen=false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{marginTop:8,borderTop:'1px solid rgba(42,65,102,.4)',paddingTop:8}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'6px 0'}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{fontSize:13,fontWeight:600,color:'var(--text-secondary)'}}>{title}</span>
+        <span style={{color:'var(--text-muted)',fontSize:18,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+      </div>
+      {open && <div style={{background:'var(--navy)',borderRadius:8,padding:'12px 14px',marginTop:4}}>{children}</div>}
     </div>
   );
 }
@@ -996,7 +1070,7 @@ function Rent({ data, onRefresh }) {
   const filtered = data.rent.filter(r=>r.Month===filterMonth && String(r.Year)===filterYear);
   const total    = filtered.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
   const paidIds  = filtered.filter(r=>r.Status==='Paid').map(r=>r['Property ID']);
-  const notPaid  = data.properties.filter(p=>!paidIds.includes(p.ID)&&p.Occupancy!=='Vacant');
+  const notPaid  = data.properties.filter(p=>!paidIds.includes(p.ID)&&p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage');
 
   return (
     <div>
@@ -1167,135 +1241,13 @@ function Rent({ data, onRefresh }) {
         {data.properties.length===0
           ? <div className="card"><div className="empty"><p>No properties added yet.</p></div></div>
           : <div className="gap-12">
-              {data.properties.map(prop => {
-                const isOpen   = filterProp === prop.ID;
-                const tenant   = data.tenants.find(t=>t['Property ID']===prop.ID&&t.Status==='Active');
-                const allTenants = data.tenants.filter(t=>t['Property ID']===prop.ID);
-                const utility  = data.utilities.find(u=>u['Property ID']===prop.ID)||{};
-                const propRent = data.rent.filter(r=>r['Property ID']===prop.ID).sort((a,b)=>{
-                  const ya=Number(a.Year),yb=Number(b.Year);
-                  if(ya!==yb) return yb-ya;
-                  return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
-                });
-                const totalPaid  = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
-                const lastPaid   = propRent.find(r=>r.Status==='Paid');
-                const [tenantOpen,  setTenantOpen]  = React.useState(false);
-                const [utilityOpen, setUtilityOpen] = React.useState(false);
-                const [rentOpen,    setRentOpen]    = React.useState(true);
-
-                return (
-                  <div key={prop.ID} className="card" style={{padding:0,overflow:'hidden'}}>
-                    {/* ── Property header row ── */}
-                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background: isOpen?'var(--surface-2)':'var(--surface)'}}
-                      onClick={()=>setFilterProp(isOpen?'':prop.ID)}>
-                      <div style={{display:'flex',alignItems:'center',gap:12}}>
-                        <div style={{width:36,height:36,borderRadius:8,background:prop.Occupancy==='Vacant'?'rgba(245,158,11,.15)':'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>
-                          {prop.Occupancy==='Vacant'?'🔓':'🏠'}
-                        </div>
-                        <div>
-                          <div style={{fontWeight:600,fontSize:14}}>{prop.Name}</div>
-                          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{prop.Address||prop.Type}</div>
-                        </div>
-                      </div>
-                      <div style={{display:'flex',alignItems:'center',gap:16}}>
-                        <div style={{textAlign:'right'}}>
-                          <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(prop['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
-                          <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'Vacant'}</div>
-                        </div>
-                        <span className={`badge ${prop.Occupancy==='Vacant'?'badge-gold':'badge-green'}`}>{prop.Occupancy||'Occupied'}</span>
-                        <span style={{color:'var(--text-muted)',fontSize:18,transition:'transform .2s',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
-                      </div>
-                    </div>
-
-                    {/* ── Expanded content ── */}
-                    {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'0 18px 18px'}}>
-
-                      {/* Stats strip */}
-                      <div style={{display:'flex',gap:24,padding:'14px 0 12px',borderBottom:'1px solid var(--border)',flexWrap:'wrap'}}>
-                        <div><div className="stat-label">Total Collected</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:2}}>{fmtINR(totalPaid)}</div></div>
-                        <div><div className="stat-label">Rent Records</div><div style={{fontSize:16,marginTop:2}}>{propRent.length}</div></div>
-                        <div><div className="stat-label">Last Payment</div><div style={{fontSize:13,marginTop:2}}>{lastPaid?`${lastPaid.Month} ${lastPaid.Year}`:'—'}</div></div>
-                        <div><div className="stat-label">Last Rent Revision</div><div style={{fontSize:13,color:'var(--gold)',marginTop:2}}>{tenant?.['Last Rent Revision']||'—'}</div></div>
-                        <div style={{marginLeft:'auto'}}>
-                          <button className="btn btn-primary btn-sm" onClick={()=>{ setMode('add'); setForm(f=>({...f,'Property ID':prop.ID,perMonthAmount:prop['Rent Amount']||''})); setViewTab('month'); window.scrollTo(0,0); }}>
-                            + Record Rent
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Tenant collapsible */}
-                      <div style={{marginTop:12}}>
-                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'8px 0'}} onClick={()=>setTenantOpen(o=>!o)}>
-                          <span style={{fontSize:13,fontWeight:600,color:'var(--text-secondary)'}}>👤 Tenant Details ({allTenants.filter(t=>t.Status==='Active').length} active)</span>
-                          <span style={{color:'var(--text-muted)',transition:'transform .2s',display:'inline-block',transform:tenantOpen?'rotate(90deg)':'none'}}>›</span>
-                        </div>
-                        {tenantOpen && <div style={{background:'var(--navy)',borderRadius:8,padding:'12px 14px',marginTop:4}}>
-                          {allTenants.length===0
-                            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
-                            : allTenants.map(t=>(
-                              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
-                                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
-                                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
-                                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
-                                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
-                                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
-                                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
-                              </div>
-                            ))
-                          }
-                        </div>}
-                      </div>
-
-                      {/* Utility collapsible */}
-                      <div style={{marginTop:4}}>
-                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'8px 0'}} onClick={()=>setUtilityOpen(o=>!o)}>
-                          <span style={{fontSize:13,fontWeight:600,color:'var(--text-secondary)'}}>⚡ Utility Numbers</span>
-                          <span style={{color:'var(--text-muted)',transition:'transform .2s',display:'inline-block',transform:utilityOpen?'rotate(90deg)':'none'}}>›</span>
-                        </div>
-                        {utilityOpen && <div style={{background:'var(--navy)',borderRadius:8,padding:'12px 14px',marginTop:4,display:'flex',gap:20,flexWrap:'wrap'}}>
-                          <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{utility['Electricity Number']||'—'}</div></div>
-                          <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{utility['Property Tax Number']||'—'}</div></div>
-                          <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{utility['Property Tax Value']?fmtINR(utility['Property Tax Value']):'—'}</div></div>
-                          <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{utility['Water Bill Number']||'—'}</div></div>
-                          {utility['Notes'] && <div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{utility['Notes']}</div></div>}
-                        </div>}
-                      </div>
-
-                      {/* Rent history collapsible */}
-                      <div style={{marginTop:4}}>
-                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'8px 0'}} onClick={()=>setRentOpen(o=>!o)}>
-                          <span style={{fontSize:13,fontWeight:600,color:'var(--text-secondary)'}}>💰 Rent History ({propRent.length} records)</span>
-                          <span style={{color:'var(--text-muted)',transition:'transform .2s',display:'inline-block',transform:rentOpen?'rotate(90deg)':'none'}}>›</span>
-                        </div>
-                        {rentOpen && <div style={{marginTop:4}}>
-                          {propRent.length===0
-                            ? <div style={{fontSize:12,color:'var(--text-muted)',padding:'8px 0'}}>No rent records yet.</div>
-                            : <div className="table-wrap"><table>
-                                <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
-                                <tbody>{propRent.map(r=>(
-                                  <tr key={r.ID}>
-                                    <td className="name">{r.Month}</td>
-                                    <td className="mono">{r.Year}</td>
-                                    <td className="mono">{fmtINR(r.Amount)}</td>
-                                    <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
-                                    <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
-                                    <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
-                                    <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
-                                    <td style={{display:'flex',gap:4}}>
-                                      <EditBtn onClick={()=>openEdit(r)}/>
-                                      <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>showReceiptForRow(r)}>🧾</button>
-                                    </td>
-                                  </tr>
-                                ))}</tbody>
-                              </table></div>
-                          }
-                        </div>}
-                      </div>
-
-                    </div>}
-                  </div>
-                );
-              })}
+              {data.properties.map(prop=>(
+                <PropertyRentCard key={prop.ID} prop={prop} data={data}
+                  onRecordRent={()=>{ setMode('add'); setForm(f=>({...f,'Property ID':prop.ID,perMonthAmount:prop['Rent Amount']||''})); setViewTab('month'); window.scrollTo(0,0); }}
+                  onEditRent={openEdit}
+                  onReceipt={showReceiptForRow}
+                />
+              ))}
             </div>
         }
       </>)}
@@ -1303,6 +1255,117 @@ function Rent({ data, onRefresh }) {
   );
 }
 
+
+// ── PROPERTY RENT CARD (used in Rent → Property View) ───────────────────────
+function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
+  const [open,        setOpen]        = useState(false);
+  const [tenantOpen,  setTenantOpen]  = useState(false);
+  const [utilityOpen, setUtilityOpen] = useState(false);
+  const [rentOpen,    setRentOpen]    = useState(true);
+
+  const tenant     = data.tenants.find(t=>t['Property ID']===prop.ID&&t.Status==='Active');
+  const allTenants = data.tenants.filter(t=>t['Property ID']===prop.ID);
+  const utility    = data.utilities.find(u=>u['Property ID']===prop.ID)||{};
+  const propRent   = data.rent.filter(r=>r['Property ID']===prop.ID).sort((a,b)=>{
+    const ya=Number(a.Year),yb=Number(b.Year);
+    if(ya!==yb) return yb-ya;
+    return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
+  });
+  const totalPaid = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+  const lastPaid  = propRent.find(r=>r.Status==='Paid');
+  const occColor  = prop.Occupancy==='Vacant'?'badge-gold':prop.Occupancy==='NotApplicable'||prop.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+  const occIcon   = prop.Occupancy==='Vacant'?'🔓':prop.Occupancy==='OwnUsage'?'🏡':prop.Occupancy==='NotApplicable'?'📋':'🏠';
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background:open?'var(--surface-2)':'var(--surface)'}}
+        onClick={()=>setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{occIcon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{prop.Name}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{prop.Address||prop.Type}</div>
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(prop['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+          </div>
+          <span className={`badge ${occColor}`}>{prop.Occupancy||'Occupied'}</span>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'0 18px 18px'}}>
+        {/* Stats strip */}
+        <div style={{display:'flex',gap:24,padding:'14px 0 12px',borderBottom:'1px solid var(--border)',flexWrap:'wrap',alignItems:'center'}}>
+          <div><div className="stat-label">Total Collected</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:2}}>{fmtINR(totalPaid)}</div></div>
+          <div><div className="stat-label">Rent Records</div><div style={{fontSize:16,marginTop:2}}>{propRent.length}</div></div>
+          <div><div className="stat-label">Last Payment</div><div style={{fontSize:13,marginTop:2}}>{lastPaid?`${lastPaid.Month} ${lastPaid.Year}`:'—'}</div></div>
+          <div><div className="stat-label">Last Revision</div><div style={{fontSize:13,color:'var(--gold)',marginTop:2}}>{tenant?.['Last Rent Revision']||'—'}</div></div>
+          <div style={{marginLeft:'auto'}}>
+            <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation();onRecordRent();}}>+ Record Rent</button>
+          </div>
+        </div>
+
+        {/* Tenant collapsible */}
+        <CollapsibleSection title={`👤 Tenant Details (${allTenants.filter(t=>t.Status==='Active').length} active)`}>
+          {allTenants.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
+            : allTenants.map(t=>(
+              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
+                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
+              </div>
+            ))
+          }
+        </CollapsibleSection>
+
+        {/* Utility collapsible */}
+        <CollapsibleSection title="⚡ Utility Numbers">
+          <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{utility['Electricity Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{utility['Property Tax Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{utility['Property Tax Value']?fmtINR(utility['Property Tax Value']):'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{utility['Water Bill Number']||'—'}</div></div>
+            {utility['Notes']&&<div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{utility['Notes']}</div></div>}
+          </div>
+        </CollapsibleSection>
+
+        {/* Rent history collapsible */}
+        <CollapsibleSection title={`💰 Rent History (${propRent.length} records)`} defaultOpen={true}>
+          {propRent.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No rent records yet.</div>
+            : <div className="table-wrap"><table>
+                <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+                <tbody>{propRent.map(r=>(
+                  <tr key={r.ID}>
+                    <td className="name">{r.Month}</td>
+                    <td className="mono">{r.Year}</td>
+                    <td className="mono">{fmtINR(r.Amount)}</td>
+                    <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                    <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                    <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                    <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                    <td style={{display:'flex',gap:4}}>
+                      <EditBtn onClick={()=>onEditRent(r)}/>
+                      <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>onReceipt(r)}>🧾</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+          }
+        </CollapsibleSection>
+      </div>}
+    </div>
+  );
+}
 
 // ── MAINTENANCE ───────────────────────────────────────────────────────────────
 function Maintenance({ data, onRefresh }) {
@@ -1404,7 +1467,7 @@ function Utilities({ data, onRefresh }) {
           const u = data.utilities.find(u=>u['Property ID']===p.ID)||{};
           return (
             <div className="card" key={p.ID}>
-              <div style={{fontWeight:500,marginBottom:10}}>{p.Name} <span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':'badge-green'}`} style={{marginLeft:8}}>{p.Occupancy||'Occupied'}</span></div>
+              <div style={{fontWeight:500,marginBottom:10}}>{p.Name} <span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green'}`} style={{marginLeft:8}}>{p.Occupancy||'Occupied'}</span></div>
               <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
                 <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Electricity</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Electricity Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
                 <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax No.</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Property Tax Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
