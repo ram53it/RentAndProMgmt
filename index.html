@@ -384,23 +384,112 @@ function parseTokenFromHash() {
   return null;
 }
 
+// ── SMART DATA FILTER — send only what the query needs ───────────────────────
+function filterDataForQuery(question, allData) {
+  const q = question.toLowerCase();
+  const now = new Date();
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthName = lastMonth.toLocaleString('en-IN', { month: 'long' });
+  const lastYear = String(lastMonth.getFullYear());
+
+  // Detect which months are mentioned
+  const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const mentionedMonths = monthNames.filter(m => q.includes(m));
+  const mentionedYears  = ['2022','2023','2024','2025','2026','2027'].filter(y => q.includes(y));
+
+  // Detect which property is mentioned
+  const mentionedProp = allData.properties.find(p => q.includes(p.Name.toLowerCase()));
+
+  // Decide which datasets are needed
+  const needsRent        = q.match(/rent|paid|collect|pending|payment|receipt|month|revenue/);
+  const needsTenants     = q.match(/tenant|phone|mobile|contact|name|advance|who|person|move/);
+  const needsMaintenance = q.match(/maintenance|repair|spent|expense|cost|vendor/);
+  const needsUtilities   = q.match(/electricity|eb|water|tax|utility|number/);
+  const needsProperties  = true; // always include properties (small data, always useful)
+
+  // Filter rent: by property if mentioned, by month/year if mentioned, else last 3 months
+  let rentData = allData.rent;
+  if (mentionedProp) {
+    rentData = rentData.filter(r => r['Property ID'] === mentionedProp.ID);
+  }
+  if (mentionedMonths.length > 0) {
+    rentData = rentData.filter(r => mentionedMonths.some(m => r.Month.toLowerCase() === m));
+  } else if (mentionedYears.length > 0) {
+    rentData = rentData.filter(r => mentionedYears.includes(String(r.Year)));
+  } else if (q.includes('last month') || q.includes('previous month')) {
+    rentData = rentData.filter(r => r.Month === lastMonthName && r.Year === lastYear);
+  } else if (q.includes('this year')) {
+    rentData = rentData.filter(r => r.Year === String(now.getFullYear()));
+  } else if (q.includes('last year')) {
+    rentData = rentData.filter(r => r.Year === String(now.getFullYear() - 1));
+  } else if (q.includes('all') || q.includes('total') || q.includes('history') || q.includes('summary')) {
+    // keep all rent
+  } else {
+    // default: last 3 months
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    rentData = rentData.filter(r => {
+      const d = new Date(`${r.Month} 1, ${r.Year}`);
+      return d >= cutoff;
+    });
+  }
+
+  // Filter tenants by property if mentioned
+  let tenantData = allData.tenants;
+  if (mentionedProp) tenantData = tenantData.filter(t => t['Property ID'] === mentionedProp.ID);
+  // For phone/contact queries only need active tenants unless asking about past
+  if (needsTenants && !q.includes('past') && !q.includes('previous') && !q.includes('old')) {
+    tenantData = tenantData.filter(t => t.Status === 'Active');
+  }
+
+  // Filter maintenance by property if mentioned, else last 6 months
+  let maintenanceData = allData.maintenance;
+  if (mentionedProp) {
+    maintenanceData = maintenanceData.filter(m => m['Property ID'] === mentionedProp.ID);
+  } else if (!q.includes('all') && !q.includes('total') && !q.includes('history')) {
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+    maintenanceData = maintenanceData.filter(m => new Date(m.Date) >= cutoff);
+  }
+
+  // Strip internal fields to reduce tokens
+  const slim = (arr, fields) => arr.map(row => {
+    const obj = {};
+    fields.forEach(f => { if (row[f] !== undefined && row[f] !== '') obj[f] = row[f]; });
+    return obj;
+  });
+
+  const result = {
+    properties: slim(allData.properties, ['ID','Name','Address','Type','Rent Amount','Occupancy']),
+  };
+  if (needsRent)        result.rent        = slim(rentData,        ['Property ID','Month','Year','Amount','Paid Date','Status','Payment Method']);
+  if (needsTenants)     result.tenants     = slim(tenantData,      ['Property ID','Name','Phone','Advance','Move In Date','Last Rent Revision','Status']);
+  if (needsMaintenance) result.maintenance = slim(maintenanceData, ['Property ID','Date','Description','Amount','Category']);
+  if (needsUtilities)   result.utilities   = slim(allData.utilities,['Property ID','Electricity Number','Property Tax Number','Property Tax Value','Water Bill Number']);
+
+  // Token estimate (rough: 1 token ≈ 4 chars)
+  const tokens = Math.round(JSON.stringify(result).length / 4);
+  console.log(`Query filter: rent=${rentData.length}r, tenants=${tenantData?.length||0}t, maint=${maintenanceData?.length||0}m | ~${tokens} tokens`);
+  return result;
+}
+
 // ── AI NLP — auto-detects Claude (sk-ant-) or Gemini (AIza) key ─────────────
 async function askClaude(question, allData) {
   const cfg = getConfig();
   const key = cfg.geminiKey || '';
   if (!key) return 'AI API key not set. Add it in Setup → Step 3.';
 
-  const context = `You are a property management assistant. Answer questions about this data concisely and helpfully.
+  // Smart filter — only send relevant data
+  const filtered = filterDataForQuery(question, allData);
 
-PROPERTIES: ${JSON.stringify(allData.properties)}
-TENANTS: ${JSON.stringify(allData.tenants)}
-RENT RECORDS: ${JSON.stringify(allData.rent)}
-MAINTENANCE: ${JSON.stringify(allData.maintenance)}
-UTILITIES: ${JSON.stringify(allData.utilities)}
+  const now = new Date();
+  const lastMonth = new Date(now.getFullYear(), now.getMonth()-1, 1);
 
-Answer the user's question. For amounts, use ₹ symbol. Be specific with numbers and names. If listing items, use a short formatted list. Today's date context: ${new Date().toLocaleDateString('en-IN')}.`;
+  const context = `You are a property management assistant. Answer questions concisely and helpfully using only the data provided.
+For amounts use ₹ symbol. Be specific with numbers and names. Use short lists where helpful.
+Today: ${now.toLocaleDateString('en-IN')}. Last month: ${lastMonth.toLocaleString('en-IN',{month:'long'})} ${lastMonth.getFullYear()}.
 
-  // Auto-detect key type
+DATA:
+${JSON.stringify(filtered)}`;
+
   const isClaude = key.startsWith('sk-ant-');
 
   if (isClaude) {
