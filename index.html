@@ -343,7 +343,7 @@ async function initSheets() {
   const headers = {
     Properties:  ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Occupancy', 'Notes', 'Created'],
     Tenants:     ['ID', 'Property ID', 'Name', 'Phone', 'Email', 'Advance', 'Move In Date', 'Status', 'Notes', 'Last Rent Revision'],
-    Rent:        ['ID', 'Property ID', 'Tenant ID', 'Month', 'Year', 'Amount', 'Paid Date', 'Status', 'Notes'],
+    Rent:        ['ID', 'Property ID', 'Tenant ID', 'Month', 'Year', 'Amount', 'Paid Date', 'Status', 'Notes', 'Payment Method'],
     Maintenance: ['ID', 'Property ID', 'Date', 'Description', 'Amount', 'Vendor', 'Category'],
     Utilities:   ['Property ID', 'Electricity Number', 'Property Tax Number', 'Property Tax Value', 'Water Bill Number', 'Notes'],
   };
@@ -936,7 +936,8 @@ function Rent({ data, onRefresh }) {
           month, year,
           form.perMonthAmount,
           form['Paid Date'], form.Status,
-          form.Notes + (form.selectedMonths.length>1 ? ` [Bulk payment: ${form.selectedMonths.length} months]` : '')
+          form.Notes + (form.selectedMonths.length>1 ? ` [Bulk payment: ${form.selectedMonths.length} months]` : ''),
+          form.paymentMethod||'Cash'
         ]);
       }
       // Prepare receipt data
@@ -963,7 +964,7 @@ function Rent({ data, onRefresh }) {
     setSaving(true);
     try {
       const tenant = data.tenants.find(t=>t['Property ID']===editForm['Property ID']&&t.Status==='Active');
-      await updateRow('Rent', mode.editing, [mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year, editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes], 9);
+      await updateRow('Rent', mode.editing, [mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year, editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes, editForm.paymentMethod||'Cash'], 10);
       setMode(null); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
@@ -1096,6 +1097,11 @@ function Rent({ data, onRefresh }) {
             <div className="form-group"><label>Status</label>
               <select value={editForm.Status} onChange={e=>ef('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
             </div>
+            <div className="form-group"><label>Payment Method</label>
+              <select value={editForm.paymentMethod||'Cash'} onChange={e=>ef('paymentMethod',e.target.value)}>
+                <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
             <div className="form-group"><label>Notes</label><input value={editForm.Notes} onChange={e=>ef('Notes',e.target.value)}/></div>
           </div>
           <div className="btn-row">
@@ -1131,7 +1137,7 @@ function Rent({ data, onRefresh }) {
         <div className="card">
           {filtered.length===0 ? <div className="empty"><p>No rent records for {filterMonth} {filterYear}.</p></div> :
           <div className="table-wrap"><table>
-            <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+            <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
             <tbody>{filtered.map(r=>{
               const prop=data.properties.find(p=>p.ID===r['Property ID']);
               const tenant=data.tenants.find(t=>t.ID===r['Tenant ID']);
@@ -1142,6 +1148,7 @@ function Rent({ data, onRefresh }) {
                 <td className="mono">{fmtINR(r.Amount)}</td>
                 <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
                 <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
                 <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
                 <td style={{display:'flex',gap:4}}>
                   <EditBtn onClick={()=>openEdit(r)}/>
@@ -1220,7 +1227,7 @@ function Rent({ data, onRefresh }) {
               {propRent.length===0
                 ? <div className="empty"><p>No rent records for this property.</p></div>
                 : <div className="table-wrap"><table>
-                    <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+                    <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
                     <tbody>{propRent.map(r=>{
                       const t2=data.tenants.find(t=>t.ID===r['Tenant ID']);
                       return (<tr key={r.ID}>
@@ -1228,6 +1235,7 @@ function Rent({ data, onRefresh }) {
                         <td className="mono">{r.Year}</td>
                         <td className="mono">{fmtINR(r.Amount)}</td>
                         <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                        <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
                         <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
                         <td style={{color:'var(--text-muted)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
                         <td style={{display:'flex',gap:4}}>
@@ -1466,7 +1474,7 @@ function PinScreen({ onUnlock }) {
   };
 
   const handleSetupNext = () => {
-    if (!form.spreadsheetId || !form.clientId || !form.geminiKey) { setError('All three fields are required.'); return; }
+    if (!form.spreadsheetId || !form.clientId) { setError('Sheet ID and Client ID are required.'); return; }
     setError('');
     setMode('choose-pin');
     setPin('');
@@ -1494,7 +1502,7 @@ function PinScreen({ onUnlock }) {
           <div className="form-group"><label>Google Sheet ID</label><input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={form.spreadsheetId} onChange={e => setForm({...form, spreadsheetId: e.target.value})}/></div>
           <div className="form-group"><label>Google OAuth Client ID</label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
           <div className="form-group">
-              <label>AI API Key (Claude or Gemini)</label>
+              <label>AI API Key (Claude or Gemini) — <span style='color:var(--text-muted);font-weight:400'>optional, can add later</span></label>
               <input type="password" placeholder="sk-ant-... (Claude)  or  AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
               <div style={{fontSize:11,color:'var(--text-muted)',marginTop:5,lineHeight:1.6}}>
                 <strong style={{color:'var(--accent)'}}>Claude:</strong> <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> → API Keys ($5 free credit) &nbsp;|&nbsp;
@@ -1623,6 +1631,39 @@ function Setup({ onChangePIN }) {
                 </div>
               </div>
           }
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.geminiKey?'done':''}`}>{cfg.geminiKey?<Icon name="check" size={14}/>:'AI'}</div>
+        <div className="setup-text">
+          <h3>AI API Key {cfg.geminiKey ? <span style={{fontSize:12,color:'var(--green)',fontWeight:400}}>✓ Set</span> : <span style={{fontSize:12,color:'var(--gold)',fontWeight:400}}>Not set — Ask AI won't work</span>}</h3>
+          <p>Paste a Claude key (<code>sk-ant-...</code>) from <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> or a Gemini key (<code>AIza...</code>) from <a href="https://aistudio.google.com/apikey" target="_blank" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a> on a new project with no billing.</p>
+          {(()=>{
+            const [aiKey, setAiKey] = React.useState('');
+            const [aiMsg, setAiMsg] = React.useState('');
+            const saveAiKey = async () => {
+              if (!aiKey.trim()) { setAiMsg('Paste a key first.'); return; }
+              const existing = cfg;
+              const newCfg = { spreadsheetId: existing.spreadsheetId, clientId: existing.clientId, geminiKey: aiKey.trim() };
+              setRuntimeConfig(newCfg);
+              // Re-encrypt with existing PIN — ask user
+              const pin = window.prompt('Enter your PIN to save the new AI key:');
+              if (!pin) { setAiMsg('Cancelled.'); return; }
+              const check = await loadConfig(pin);
+              if (!check) { setAiMsg('Wrong PIN.'); return; }
+              await persistConfig(pin, newCfg);
+              setAiMsg('✓ AI key saved!');
+              setAiKey('');
+            };
+            return (<div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+              <div className="form-group" style={{flex:1,minWidth:200,marginBottom:0}}>
+                <input type="password" placeholder="sk-ant-... or AIzaSy..." value={aiKey} onChange={e=>setAiKey(e.target.value)}/>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={saveAiKey}>Save Key</button>
+              {aiMsg && <span style={{fontSize:12,color:aiMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{aiMsg}</span>}
+            </div>);
+          })()}
         </div>
       </div>
 
