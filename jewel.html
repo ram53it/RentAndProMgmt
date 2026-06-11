@@ -1,0 +1,1989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jewel Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #14110a;
+      --navy-mid: #1c1810;
+      --navy-light: #2a2417;
+      --navy-border: #3d3420;
+      --accent: #d4a017;
+      --accent-hover: #b8890f;
+      --accent-light: rgba(212,160,23,0.12);
+      --gold: #f59e0b;
+      --silver: #9ca3af;
+      --green: #10b981;
+      --green-light: rgba(16,185,129,0.12);
+      --red: #ef4444;
+      --red-light: rgba(239,68,68,0.10);
+      --text-primary: #f5f1e8;
+      --text-secondary: #b3a98f;
+      --text-muted: #7d7460;
+      --surface: #1c1810;
+      --surface-2: #2a2417;
+      --border: #3d3420;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --mono: 'JetBrains Mono', monospace;
+    }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', sans-serif; background: var(--navy); color: var(--text-primary); min-height: 100vh; display: flex; }
+    #root { display: flex; width: 100%; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; min-height: 100vh; background: var(--navy-mid); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+    .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-logo .logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; font-size: 17px; }
+    .sidebar-logo h1 { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .sidebar-logo p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .sidebar-nav { padding: 12px 8px; flex: 1; }
+    .nav-section { margin-bottom: 20px; }
+    .nav-section-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; padding: 0 8px; margin-bottom: 4px; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border: none; background: none; width: 100%; text-align: left; transition: all .15s; font-family: inherit; }
+    .nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-light); color: var(--accent); }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+    .setup-badge { font-size: 11px; background: rgba(245,158,11,.12); color: var(--gold); border: 1px solid rgba(245,158,11,.25); border-radius: 6px; padding: 6px 10px; cursor: pointer; text-align: center; }
+
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--navy-mid); }
+    .topbar h2 { font-size: 16px; font-weight: 600; }
+    .topbar p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+    .card + .card { margin-top: 16px; }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+
+    /* Stats row */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+    .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .stat-value { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--text-primary); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.gold { color: var(--gold); }
+    .stat-value.silver { color: var(--silver); }
+    .stat-value.red { color: var(--red); }
+    .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    td { padding: 12px; border-bottom: 1px solid rgba(61,52,32,.5); color: var(--text-secondary); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); color: var(--text-primary); }
+    .mono { font-family: var(--mono); font-size: 12px; }
+    td.name { color: var(--text-primary); font-weight: 500; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 20px; }
+    .badge-green { background: var(--green-light); color: var(--green); }
+    .badge-red { background: var(--red-light); color: var(--red); }
+    .badge-gold { background: rgba(245,158,11,.12); color: var(--gold); }
+    .badge-silver { background: rgba(156,163,175,.12); color: var(--silver); }
+    .badge-blue { background: var(--accent-light); color: var(--accent); }
+
+    /* Forms */
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+    .form-group input, .form-group select, .form-group textarea {
+      background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 9px 12px; font-size: 13px; color: var(--text-primary); font-family: inherit;
+      transition: border-color .15s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+    .form-group select option { background: var(--navy); }
+
+    /* Item rows (transaction builder) */
+    .item-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) 36px; gap: 8px; align-items: end; padding: 10px; background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; }
+    .item-row .form-group input, .item-row .form-group select { padding: 7px 9px; font-size: 12px; }
+    .item-row .form-group label { font-size: 10px; }
+    .row-del { background: var(--red-light); color: var(--red); border: none; border-radius: 6px; height: 33px; cursor: pointer; font-size: 14px; }
+    .settle-box { background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 12px; }
+    .settle-line { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: var(--text-secondary); }
+    .settle-line.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; font-weight: 600; color: var(--text-primary); font-size: 14px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; font-family: inherit; }
+    .btn-primary { background: var(--accent); color: #14110a; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: .6; cursor: default; }
+    .btn-secondary { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+    .btn-secondary:hover { color: var(--text-primary); border-color: var(--accent); }
+    .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+    /* NLP Panel */
+    .nlp-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; height: 480px; }
+    .nlp-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
+    .msg-avatar { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+    .msg-avatar.user { background: var(--accent-light); color: var(--accent); }
+    .msg-avatar.ai { background: rgba(16,185,129,.15); color: var(--green); }
+    .msg-bubble { background: var(--surface-2); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.6; color: var(--text-primary); max-width: 600px; }
+    .msg-bubble.user { background: var(--accent-light); border: 1px solid rgba(212,160,23,.2); }
+    .nlp-input-row { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+    .nlp-input { flex: 1; background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; color: var(--text-primary); font-family: inherit; resize: none; height: 42px; }
+    .nlp-input:focus { outline: none; border-color: var(--accent); }
+    .nlp-suggestions { padding: 0 16px 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .nlp-chip { font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; background: none; font-family: inherit; transition: all .15s; }
+    .nlp-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Setup page */
+    .setup-step { display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border); margin-bottom: 12px; align-items: flex-start; }
+    .setup-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .setup-num.done { background: var(--green-light); color: var(--green); }
+    .setup-text h3 { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+    .setup-text p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .setup-text code { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; color: var(--accent); }
+    .config-status { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot-green { background: var(--green); }
+    .dot-red { background: var(--red); }
+
+    /* Loading */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+    .empty p { font-size: 13px; margin-top: 6px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 2px; background: var(--navy); border-radius: var(--radius); padding: 4px; margin-bottom: 20px; width: fit-content; flex-wrap: wrap; }
+    .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: all .15s; border: none; background: none; font-family: inherit; }
+    .tab.active { background: var(--surface); color: var(--text-primary); }
+
+    /* Utility */
+    .section-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .section-row h3 { font-size: 15px; font-weight: 600; }
+    .gap-12 { display: flex; flex-direction: column; gap: 12px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .sidebar { width: 56px; } .sidebar .sidebar-logo h1, .sidebar .nav-item span, .nav-section-label, .sidebar-logo p, .sidebar-footer { display: none; } .nav-item { justify-content: center; padding: 10px; } }
+
+    /* PIN screen */
+    .pin-screen { position: fixed; inset: 0; background: var(--navy); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .pin-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px 32px; width: 100%; max-width: 380px; text-align: center; }
+    .pin-logo { width: 48px; height: 48px; background: var(--accent); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 24px; }
+    .pin-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .pin-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5; }
+    .pin-dots { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; }
+    .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); transition: all .15s; }
+    .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+    .pin-dot.error { background: var(--red); border-color: var(--red); }
+    .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .pin-key { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 18px; font-weight: 500; cursor: pointer; color: var(--text-primary); transition: all .15s; font-family: var(--mono); }
+    .pin-key:hover { background: var(--navy-light); border-color: var(--accent); }
+    .pin-key:active { transform: scale(.95); }
+    .pin-key.del { font-size: 14px; color: var(--text-muted); }
+    .pin-error { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 18px; }
+    .pin-setup-form { text-align: left; }
+    .pin-setup-form .form-group { margin-bottom: 12px; }
+    .pin-toggle { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 12px; display: inline-block; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── CONFIG — PIN-encrypted localStorage ──────────────────────────────────────
+// Keys are AES-GCM encrypted with your PIN before being stored.
+// Nothing sensitive is ever in the source code.
+const STORE_KEY = 'jm_enc_config';
+const TOKEN_KEY = 'jm_access_token';
+
+async function deriveKey(pin) {
+  const enc = new TextEncoder();
+  const raw = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('jm-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptConfig(pin, data) {
+  const key = await deriveKey(pin);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
+  const buf = new Uint8Array(iv.byteLength + cipher.byteLength);
+  buf.set(iv, 0); buf.set(new Uint8Array(cipher), iv.byteLength);
+  return btoa(String.fromCharCode(...buf));
+}
+
+async function decryptConfig(pin, b64) {
+  try {
+    const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = buf.slice(0, 12), data = buf.slice(12);
+    const key = await deriveKey(pin);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return JSON.parse(new TextDecoder().decode(plain));
+  } catch { return null; }
+}
+
+function hasEncryptedConfig() { return !!localStorage.getItem(STORE_KEY); }
+
+async function loadConfig(pin) {
+  const b64 = localStorage.getItem(STORE_KEY);
+  if (!b64) return null;
+  return decryptConfig(pin, b64);
+}
+
+async function persistConfig(pin, cfg) {
+  const toStore = { spreadsheetId: cfg.spreadsheetId, clientId: cfg.clientId, geminiKey: cfg.geminiKey };
+  const enc = await encryptConfig(pin, toStore);
+  localStorage.setItem(STORE_KEY, enc);
+}
+
+let _runtimeConfig = null;
+const getConfig = () => ({ ...(_runtimeConfig || {}), accessToken: localStorage.getItem(TOKEN_KEY) || null });
+const saveConfig = (cfg) => {
+  if (cfg.accessToken !== undefined) {
+    if (cfg.accessToken) localStorage.setItem(TOKEN_KEY, cfg.accessToken);
+    else localStorage.removeItem(TOKEN_KEY);
+  }
+};
+const setRuntimeConfig = (cfg) => { _runtimeConfig = cfg; };
+
+// ── GOOGLE SHEETS API ─────────────────────────────────────────────────────────
+const HEADERS = {
+  Stock:        ['ID','Box Name','Metal','Description','Location','Pieces','Weight Grams','Status','Notes','Created'],
+  Transactions: ['ID','Date','Customer','Phone','Sale Value','Old Value','Cash In','UPI In','Cash Out','UPI Out','Balance Due','Status','Notes'],
+  TxnItems:     ['ID','Txn ID','Source','Box ID','Description','Metal','Pieces','Weight Grams','Rate','Amount','Direction'],
+  Lending:      ['ID','Date','Person','Phone','Type','Mode','Weight Grams','Amount','Interest %','Due Date','Status','Notes'],
+  Payments:     ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
+  Ledger:       ['ID','Date','Direction','Mode','Amount','Category','Ref ID','Notes'],
+  Refills:      ['ID','Date','Metal','Weight Grams','Cost','Paid Mode','Notes'],
+  Movements:    ['ID','Date','From','To','Metal','Description','Pieces','Weight Grams','Notes'],
+};
+
+async function sheetsRequest(method, path, body = null) {
+  const cfg = getConfig();
+  if (!cfg.accessToken) throw new Error('Not authenticated');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.spreadsheetId}${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: { Authorization: `Bearer ${cfg.accessToken}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : null,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 401) { saveConfig({ ...cfg, accessToken: null }); throw new Error('Session expired — please sign in again'); }
+    throw new Error(err.error?.message || 'Sheets API error');
+  }
+  return res.json();
+}
+
+async function readSheet(sheetName) {
+  const data = await sheetsRequest('GET', `/values/${sheetName}`);
+  const rows = data.values || [];
+  if (rows.length <= 1) return [];
+  const headers = rows[0];
+  return rows.slice(1).filter(row => row && row.some(c => c !== '')).map((row, i) => {
+    const obj = { _row: i + 2 };
+    headers.forEach((h, j) => { obj[h] = (row[j] !== undefined ? row[j] : ''); });
+    return obj;
+  });
+}
+
+async function appendRow(sheetName, values) {
+  await sheetsRequest('POST', `/values/${sheetName}!A1:append?valueInputOption=USER_ENTERED`, { values: [values] });
+}
+
+async function updateRow(sheetName, rowNum, values) {
+  const col = String.fromCharCode(64 + values.length);
+  await sheetsRequest('PUT', `/values/${sheetName}!A${rowNum}:${col}${rowNum}?valueInputOption=USER_ENTERED`, { values: [values] });
+}
+
+// Build the values array for a row object in header order (for updates)
+function rowValues(sheetName, obj) {
+  return HEADERS[sheetName].map(h => obj[h] !== undefined ? obj[h] : '');
+}
+
+// Create missing sheet tabs, then write headers where row 1 is empty
+async function initSheets() {
+  try {
+    const meta = await sheetsRequest('GET', '?fields=sheets.properties.title');
+    const existing = (meta.sheets || []).map(s => s.properties.title);
+    const missing = Object.keys(HEADERS).filter(t => !existing.includes(t));
+    if (missing.length) {
+      await sheetsRequest('POST', ':batchUpdate', { requests: missing.map(t => ({ addSheet: { properties: { title: t } } })) });
+    }
+  } catch(e) { console.warn('initSheets tabs:', e.message); }
+  for (const [sheet, h] of Object.entries(HEADERS)) {
+    try {
+      const existing = await sheetsRequest('GET', `/values/${sheet}!A1:A1`);
+      const hasHeader = existing.values && existing.values.length > 0 && existing.values[0][0];
+      if (!hasHeader) {
+        const endCol = String.fromCharCode(64 + h.length);
+        await sheetsRequest('PUT', `/values/${sheet}!A1:${endCol}1?valueInputOption=USER_ENTERED`, { values: [h] });
+      }
+    } catch(e) { console.warn('initSheets header for', sheet, e.message); }
+  }
+}
+
+// ── GOOGLE AUTH ───────────────────────────────────────────────────────────────
+function signInWithGoogle() {
+  const cfg = getConfig();
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: 'token',
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    prompt: 'consent',
+  });
+  window.location.href = `https://accounts.google.com/o/oauth2/auth?${params}`;
+}
+
+function parseTokenFromHash() {
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  const token = hash.get('access_token');
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    window.history.replaceState({}, '', window.location.pathname);
+    return token;
+  }
+  return null;
+}
+
+// ── SHARED HELPERS ────────────────────────────────────────────────────────────
+const fmtINR = (v) => '₹' + Number(v||0).toLocaleString('en-IN');
+const fmtG   = (v) => Number(v||0).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' g';
+const todayStr = () => new Date().toISOString().slice(0,10);
+const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
+
+// Append a ledger entry — every cash/account movement goes through here
+async function addLedger(date, direction, mode, amount, category, refId, notes) {
+  if (num(amount) <= 0) return;
+  await appendRow('Ledger', [uid('L'), date, direction, mode, num(amount), category, refId||'', notes||'']);
+}
+
+// ── DERIVED TOTALS — computed fresh from sheets every load ───────────────────
+function computeDerived(data) {
+  let cashIn=0, cashOut=0, acctIn=0, acctOut=0;
+  data.ledger.forEach(l => {
+    const amt = num(l.Amount);
+    const isCash = l.Mode === 'Cash';
+    if (l.Direction === 'In') { isCash ? cashIn += amt : acctIn += amt; }
+    else { isCash ? cashOut += amt : acctOut += amt; }
+  });
+
+  let goldBoxG=0, silverBoxG=0, goldBoxes=0, silverBoxes=0;
+  data.stock.forEach(b => {
+    const w = num(b['Weight Grams']);
+    if (b.Metal === 'Silver') { silverBoxG += w; if (w>0) silverBoxes++; }
+    else { goldBoxG += w; if (w>0) goldBoxes++; }
+  });
+
+  // Old-metal pool: refills + old jewel received − pool metal given out − metal lent + metal repaid ± manual moves
+  let goldPool=0, silverPool=0;
+  const poolAdd = (metal, g) => { metal === 'Silver' ? silverPool += g : goldPool += g; };
+  data.refills.forEach(r => poolAdd(r.Metal, num(r['Weight Grams'])));
+  data.txnItems.forEach(it => {
+    if (it.Source !== 'Pool') return;
+    poolAdd(it.Metal, (it.Direction === 'In' ? 1 : -1) * num(it['Weight Grams']));
+  });
+  data.lending.forEach(l => {
+    if (l.Type === 'Gold' || l.Type === 'Silver') poolAdd(l.Type, -num(l['Weight Grams']));
+  });
+  data.payments.forEach(p => {
+    if (p.Mode === 'Gold' || p.Mode === 'Silver') poolAdd(p.Mode, num(p['Weight Grams']));
+  });
+  data.movements.forEach(m => {
+    const w = num(m['Weight Grams']);
+    if (m.From === 'Old Gold Pool') goldPool -= w;
+    if (m.From === 'Old Silver Pool') silverPool -= w;
+    if (m.To === 'Old Gold Pool') goldPool += w;
+    if (m.To === 'Old Silver Pool') silverPool += w;
+  });
+
+  // Outstanding balances
+  const paidFor = (refType, refId) => data.payments
+    .filter(p => p['Ref Type'] === refType && p['Ref ID'] === refId)
+    .reduce((s,p) => s + num(p.Amount), 0);
+
+  const txnOutstanding = data.transactions.map(t => ({ ...t, outstanding: num(t['Balance Due']) - paidFor('Transaction', t.ID) }));
+
+  // Simple interest on principal, per month, from lending date until today (stops once Closed)
+  const interestFor = (l) => {
+    const rate = num(l['Interest %']);
+    if (!rate || !l.Date) return 0;
+    const days = Math.max(0, (Date.now() - new Date(l.Date).getTime()) / 86400000);
+    return Math.round(num(l.Amount) * (rate/100) * (days/30));
+  };
+  const lendOutstanding = data.lending.map(l => {
+    const closed = l.Status === 'Closed';
+    const interest = closed ? 0 : interestFor(l);
+    const paid = paidFor('Lending', l.ID);
+    return { ...l, interest, paid, outstanding: closed ? 0 : num(l.Amount) + interest - paid };
+  });
+
+  const customerDue = txnOutstanding.filter(t => t.outstanding > 0).reduce((s,t) => s + t.outstanding, 0);
+  const weOwe       = txnOutstanding.filter(t => t.outstanding < 0).reduce((s,t) => s - t.outstanding, 0);
+  const lendingDue  = lendOutstanding.filter(l => l.outstanding > 0).reduce((s,l) => s + l.outstanding, 0);
+
+  return {
+    cashInHand: cashIn - cashOut,
+    accountBal: acctIn - acctOut,
+    goldBoxG, silverBoxG, goldBoxes, silverBoxes,
+    goldPool, silverPool,
+    txnOutstanding, lendOutstanding,
+    customerDue, weOwe, lendingDue,
+    paidFor,
+  };
+}
+
+// ── SMART DATA FILTER — send only what the query needs ───────────────────────
+function filterDataForQuery(question, data, derived) {
+  const q = question.toLowerCase();
+
+  const summary = {
+    cashInHand: derived.cashInHand,
+    accountBalance: derived.accountBal,
+    goldInBoxesGrams: derived.goldBoxG,
+    silverInBoxesGrams: derived.silverBoxG,
+    oldGoldPoolGrams: derived.goldPool,
+    oldSilverPoolGrams: derived.silverPool,
+    customersOweUs: derived.customerDue,
+    weOweCustomers: derived.weOwe,
+    lendingOutstanding: derived.lendingDue,
+  };
+
+  const slim = (arr, fields) => arr.map(row => {
+    const obj = {};
+    fields.forEach(f => { if (row[f] !== undefined && row[f] !== '') obj[f] = row[f]; });
+    return obj;
+  });
+
+  const needsStock   = q.match(/stock|box|pocket|container|weight|gram|gold|silver|ornament|item|jewel|move|moved|shift|location|place|locker/);
+  const needsTxn     = q.match(/sale|sold|sell|buy|bought|purchase|customer|transaction|balance|due|exchange|old/);
+  const needsLending = q.match(/lend|loan|borrow|gave|given|owe|return|help|installment|interest/);
+  const needsLedger  = q.match(/cash|account|upi|ledger|money|spent|expense|hand|received|paid/);
+
+  const result = { summary };
+  if (needsStock || (!needsTxn && !needsLending && !needsLedger)) {
+    result.stockBoxes = slim(data.stock, ['ID','Box Name','Metal','Description','Location','Pieces','Weight Grams','Status']);
+    result.refills = slim(data.refills, ['Date','Metal','Weight Grams','Cost']);
+    result.itemMovements = slim(data.movements.slice(-100), ['Date','From','To','Metal','Description','Pieces','Weight Grams','Notes']);
+  }
+  if (needsTxn) {
+    result.transactions = derived.txnOutstanding.slice(-100).map(t => ({
+      ID:t.ID, Date:t.Date, Customer:t.Customer, Phone:t.Phone, SaleValue:t['Sale Value'], OldValue:t['Old Value'],
+      CashIn:t['Cash In'], UPIIn:t['UPI In'], CashOut:t['Cash Out'], UPIOut:t['UPI Out'], Outstanding:t.outstanding, Status:t.Status,
+    }));
+    result.transactionItems = slim(data.txnItems.slice(-200), ['Txn ID','Source','Description','Metal','Pieces','Weight Grams','Rate','Amount','Direction']);
+  }
+  if (needsLending) {
+    result.lending = derived.lendOutstanding.map(l => ({
+      ID:l.ID, Date:l.Date, Person:l.Person, Phone:l.Phone, Type:l.Type, WeightGrams:l['Weight Grams'],
+      Principal:l.Amount, InterestPctPerMonth:l['Interest %'], InterestAccrued:l.interest,
+      DueDate:l['Due Date'], Outstanding:l.outstanding, Status:l.Status,
+    }));
+    result.repayments = slim(data.payments.filter(p=>p['Ref Type']==='Lending'), ['Date','Ref ID','Person','Mode','Amount','Weight Grams']);
+  }
+  if (needsLedger) {
+    result.ledgerRecent = slim(data.ledger.slice(-150), ['Date','Direction','Mode','Amount','Category','Notes']);
+  }
+  return result;
+}
+
+// ── AI — auto-detects Claude (sk-ant-) or Gemini (AIza) key ──────────────────
+async function askAI(question, data, derived) {
+  const cfg = getConfig();
+  const key = cfg.geminiKey || '';
+  if (!key) return 'AI API key not set. Add it in Setup.';
+
+  const filtered = filterDataForQuery(question, data, derived);
+  const now = new Date();
+
+  const context = `You are an assistant for a small family jewellery business in India. Answer concisely using only the data provided.
+Amounts are in ₹ (INR), weights in grams. "Pool" means loose old gold/silver received from customers (not in boxes).
+Stock is kept in boxes/pockets (each has a Location = where it is kept). Item movements between boxes/pool/places are logged in itemMovements.
+Transactions can mix selling ornaments, receiving old jewel, and cash/UPI settlement.
+Positive Outstanding on a transaction = customer still owes us; negative = we owe the customer.
+Lending = gold or cash given to help someone, repaid in installments. Some lending carries simple interest (% per month on principal); InterestAccrued is computed till today and Outstanding = Principal + InterestAccrued − repaid.
+Today: ${now.toLocaleDateString('en-IN')}.
+
+DATA:
+${JSON.stringify(filtered)}`;
+
+  const isClaude = key.startsWith('sk-ant-');
+  if (isClaude) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, system: context, messages: [{ role: 'user', content: question }] }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Claude API error'); }
+    const d = await res.json();
+    return d.content[0].text;
+  } else {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: context }] },
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        generationConfig: { maxOutputTokens: 1000 }
+      }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Gemini API error'); }
+    const d = await res.json();
+    return d.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
+  }
+}
+
+// ── ICONS ─────────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 16 }) => {
+  const icons = {
+    dashboard: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+    box: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+    exchange: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>,
+    list: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+    hand: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+    currency: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
+    chat: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+    settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
+    plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    send: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+    check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polyline points="20 6 9 17 4 12"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+function CollapsibleSection({ title, defaultOpen=false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{marginTop:12}}>
+      <div style={{fontSize:12,fontWeight:600,color:'var(--text-secondary)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{display:'inline-block',transition:'transform .2s',transform:open?'rotate(90deg)':'none'}}>›</span>{title}
+      </div>
+      {open && <div style={{marginTop:8}}>{children}</div>}
+    </div>
+  );
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────────────
+function Dashboard({ data, derived, onNav }) {
+  const d = derived;
+  const recentTxns = [...data.transactions].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'')).slice(0,8);
+  const pendingTxns = d.txnOutstanding.filter(t => Math.abs(t.outstanding) > 0.5);
+  const openLends = d.lendOutstanding.filter(l => l.outstanding > 0.5);
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">💵 Cash in Hand</div><div className={`stat-value ${d.cashInHand>=0?'green':'red'}`}>{fmtINR(d.cashInHand)}</div><div className="stat-sub">From ledger</div></div>
+        <div className="stat-card"><div className="stat-label">🏦 Account / UPI</div><div className={`stat-value ${d.accountBal>=0?'green':'red'}`}>{fmtINR(d.accountBal)}</div><div className="stat-sub">From ledger</div></div>
+        <div className="stat-card"><div className="stat-label">🥇 Gold Stock</div><div className="stat-value gold">{fmtG(d.goldBoxG + d.goldPool)}</div><div className="stat-sub">{fmtG(d.goldBoxG)} in boxes + {fmtG(d.goldPool)} old/loose</div></div>
+        <div className="stat-card"><div className="stat-label">🥈 Silver Stock</div><div className="stat-value silver">{fmtG(d.silverBoxG + d.silverPool)}</div><div className="stat-sub">{fmtG(d.silverBoxG)} in boxes + {fmtG(d.silverPool)} old/loose</div></div>
+        <div className="stat-card"><div className="stat-label">⏳ Customers Owe</div><div className="stat-value" style={{color:d.customerDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.customerDue)}</div><div className="stat-sub">{d.weOwe>0?`We owe ${fmtINR(d.weOwe)}`:'Balance due to us'}</div></div>
+        <div className="stat-card"><div className="stat-label">🤝 Lending Out</div><div className="stat-value" style={{color:d.lendingDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.lendingDue)}</div><div className="stat-sub">{openLends.length} open</div></div>
+      </div>
+
+      <div className="two-col">
+        <div className="card">
+          <div className="section-row" style={{marginBottom:12}}>
+            <div className="card-title" style={{marginBottom:0}}>Recent Transactions</div>
+            <button className="btn btn-primary btn-sm" onClick={()=>onNav('newtxn')}><Icon name="plus" size={12}/> New Transaction</button>
+          </div>
+          {recentTxns.length === 0 ? <div className="empty"><p>No transactions yet.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Date</th><th>Customer</th><th>Sale</th><th>Old</th><th>Status</th></tr></thead>
+            <tbody>{recentTxns.map(t => {
+              const out = d.txnOutstanding.find(x=>x.ID===t.ID)?.outstanding || 0;
+              return (<tr key={t.ID}>
+                <td className="mono">{t.Date}</td>
+                <td className="name">{t.Customer}</td>
+                <td className="mono">{fmtINR(t['Sale Value'])}</td>
+                <td className="mono">{fmtINR(t['Old Value'])}</td>
+                <td><span className={`badge ${Math.abs(out)<.5?'badge-green':out>0?'badge-gold':'badge-red'}`}>{Math.abs(out)<.5?'Settled':out>0?`Due ${fmtINR(out)}`:`We owe ${fmtINR(-out)}`}</span></td>
+              </tr>);
+            })}</tbody>
+          </table></div>}
+        </div>
+
+        <div>
+          <div className="card">
+            <div className="card-title">Pending Balances</div>
+            {pendingTxns.length === 0 ? <div className="empty"><p>All transactions settled ✓</p></div> :
+            <div className="table-wrap"><table>
+              <thead><tr><th>Customer</th><th>Date</th><th>Outstanding</th></tr></thead>
+              <tbody>{pendingTxns.map(t => (
+                <tr key={t.ID}><td className="name">{t.Customer}</td><td className="mono">{t.Date}</td>
+                  <td className="mono" style={{color:t.outstanding>0?'var(--gold)':'var(--red)'}}>{t.outstanding>0?fmtINR(t.outstanding):`−${fmtINR(-t.outstanding)} (we owe)`}</td></tr>
+              ))}</tbody>
+            </table></div>}
+          </div>
+          <div className="card">
+            <div className="card-title">Open Lending</div>
+            {openLends.length === 0 ? <div className="empty"><p>Nothing lent out ✓</p></div> :
+            <div className="table-wrap"><table>
+              <thead><tr><th>Person</th><th>Given</th><th>To Return</th></tr></thead>
+              <tbody>{openLends.map(l => (
+                <tr key={l.ID}><td className="name">{l.Person}</td>
+                  <td>{l.Type==='Cash'?fmtINR(l.Amount):`${l.Type} ${fmtG(l['Weight Grams'])}`}</td>
+                  <td className="mono" style={{color:'var(--gold)'}}>{fmtINR(l.outstanding)}</td></tr>
+              ))}</tbody>
+            </table></div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── STOCK (boxes + pool + refill + movements) ────────────────────────────────
+function Stock({ data, derived, onRefresh }) {
+  const [tab, setTab] = useState('boxes'); // boxes | movements
+  const [mode, setMode] = useState(null); // null | 'add' | {editing}
+  const [saving, setSaving] = useState(false);
+  const [showRefill, setShowRefill] = useState(false);
+  const [showMove, setShowMove] = useState(false);
+  const [histFor, setHistFor] = useState(null); // box ID whose history is expanded
+  const blank = { ID:'', 'Box Name':'', Metal:'Gold', Description:'', Location:'', Pieces:'', 'Weight Grams':'', Status:'In Stock', Notes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p => ({...p,[k]:v}));
+
+  const refillBlank = { Date: todayStr(), Metal:'Gold', weight:'', cost:'', mode:'None', notes:'' };
+  const [refill, setRefill] = useState(refillBlank);
+  const rf = (k,v) => setRefill(p => ({...p,[k]:v}));
+
+  const moveBlank = { date: todayStr(), from:'', to:'', metal:'Gold', desc:'', pieces:'', weight:'', otherFrom:'', otherTo:'', notes:'' };
+  const [move, setMove] = useState(moveBlank);
+  const mv = (k,v) => setMove(p => ({...p,[k]:v}));
+
+  const openAdd = () => { setForm(blank); setMode('add'); };
+  const openEdit = (b) => { setForm({...blank, ...b}); setMode({ editing: b._row, created: b.Created }); };
+
+  const handleSave = async () => {
+    if (!form['Box Name'] || form['Weight Grams']==='') { alert('Box name and weight are required.'); return; }
+    setSaving(true);
+    try {
+      if (mode === 'add') {
+        await appendRow('Stock', [uid('B'), form['Box Name'], form.Metal, form.Description, form.Location, form.Pieces, form['Weight Grams'], num(form['Weight Grams'])>0?'In Stock':'Empty', form.Notes, todayStr()]);
+      } else {
+        await updateRow('Stock', mode.editing, [form.ID, form['Box Name'], form.Metal, form.Description, form.Location, form.Pieces, form['Weight Grams'], num(form['Weight Grams'])>0?'In Stock':'Empty', form.Notes, mode.created||'']);
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  // Resolve a move endpoint key into { label, box }
+  const endpoint = (key, otherText) => {
+    if (key === 'poolG') return { label: 'Old Gold Pool', metal: 'Gold' };
+    if (key === 'poolS') return { label: 'Old Silver Pool', metal: 'Silver' };
+    if (key === 'other') return { label: otherText.trim() || 'Other place' };
+    const box = data.stock.find(b => b.ID === key);
+    return box ? { label: box['Box Name'], metal: box.Metal, box } : null;
+  };
+
+  const handleMove = async () => {
+    if (!move.from || !move.to) { alert('Pick both From and To.'); return; }
+    if (move.from === move.to) { alert('From and To cannot be the same.'); return; }
+    if (num(move.weight) <= 0) { alert('Enter the weight moved.'); return; }
+    const from = endpoint(move.from, move.otherFrom);
+    const to = endpoint(move.to, move.otherTo);
+    if (!from || !to) { alert('Pick valid From and To.'); return; }
+    const metal = from.metal || to.metal || move.metal;
+    if (from.metal && to.metal && from.metal !== to.metal) { alert(`Metal mismatch: "${from.label}" is ${from.metal} but "${to.label}" is ${to.metal}.`); return; }
+    if (from.box && num(move.weight) > num(from.box['Weight Grams']) + 0.0001) { alert(`"${from.label}" has only ${from.box['Weight Grams']} g.`); return; }
+    if (move.from === 'poolG' && num(move.weight) > derived.goldPool + 0.0001) { alert(`Old gold pool has only ${derived.goldPool} g.`); return; }
+    if (move.from === 'poolS' && num(move.weight) > derived.silverPool + 0.0001) { alert(`Old silver pool has only ${derived.silverPool} g.`); return; }
+    setSaving(true);
+    try {
+      await appendRow('Movements', [uid('M'), move.date, from.label, to.label, metal, move.desc, move.pieces, num(move.weight), move.notes]);
+      const adjustBox = async (box, sign) => {
+        const newW = Math.round((num(box['Weight Grams']) + sign*num(move.weight))*1000)/1000;
+        const newP = box.Pieces!=='' && move.pieces!=='' ? Math.max(0, num(box.Pieces) + sign*num(move.pieces)) : box.Pieces;
+        await updateRow('Stock', box._row, rowValues('Stock', { ...box, Pieces:newP, 'Weight Grams':newW, Status:newW>0?'In Stock':'Empty' }));
+      };
+      if (from.box) await adjustBox(from.box, -1);
+      if (to.box) await adjustBox(to.box, +1);
+      setMove(moveBlank); setShowMove(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  // Full audit trail for one box: creation, sales, manual moves
+  const boxHistory = (b) => {
+    const ev = [];
+    if (b.Created) ev.push({ date: b.Created, what: '📦 Box created', detail: `${fmtG(b['Weight Grams'])} now` });
+    data.txnItems.filter(i => i['Box ID'] === b.ID).forEach(i => {
+      const t = data.transactions.find(t => t.ID === i['Txn ID']);
+      ev.push({ date: t ? t.Date : '', what: `🛍 Sold ${fmtG(i['Weight Grams'])}`, detail: `${i.Description||''}${t?' to '+t.Customer:''} — ${fmtINR(i.Amount)}` });
+    });
+    data.movements.filter(m => m.From === b['Box Name'] || m.To === b['Box Name']).forEach(m => {
+      const out = m.From === b['Box Name'];
+      ev.push({ date: m.Date, what: `${out?'↗️ Moved out':'↘️ Moved in'} ${fmtG(m['Weight Grams'])}`, detail: `${out?'to':'from'} ${out?m.To:m.From}${m.Description?' — '+m.Description:''}` });
+    });
+    return ev.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+  };
+
+  const handleRefill = async () => {
+    if (!refill.weight) { alert('Enter the weight refilled.'); return; }
+    setSaving(true);
+    try {
+      const id = uid('R');
+      await appendRow('Refills', [id, refill.Date, refill.Metal, num(refill.weight), num(refill.cost), refill.mode, refill.notes]);
+      if (num(refill.cost) > 0 && refill.mode !== 'None') {
+        await addLedger(refill.Date, 'Out', refill.mode==='Cash'?'Cash':'Account', refill.cost, 'Refill', id, `${refill.Metal} refill ${refill.weight}g`);
+      }
+      setRefill(refillBlank); setShowRefill(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const sorted = [...data.stock].sort((a,b) => (a.Metal||'').localeCompare(b.Metal||'') || (a['Box Name']||'').localeCompare(b['Box Name']||''));
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">🥇 Gold in Boxes</div><div className="stat-value gold">{fmtG(derived.goldBoxG)}</div><div className="stat-sub">{derived.goldBoxes} boxes with stock</div></div>
+        <div className="stat-card"><div className="stat-label">🥈 Silver in Boxes</div><div className="stat-value silver">{fmtG(derived.silverBoxG)}</div><div className="stat-sub">{derived.silverBoxes} boxes with stock</div></div>
+        <div className="stat-card"><div className="stat-label">Old Gold (loose pool)</div><div className="stat-value gold">{fmtG(derived.goldPool)}</div><div className="stat-sub">Old jewel + refills − given out</div></div>
+        <div className="stat-card"><div className="stat-label">Old Silver (loose pool)</div><div className="stat-value silver">{fmtG(derived.silverPool)}</div><div className="stat-sub">Old jewel + refills − given out</div></div>
+      </div>
+
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${tab==='boxes'?'active':''}`} onClick={()=>setTab('boxes')}>Boxes</button>
+          <button className={`tab ${tab==='movements'?'active':''}`} onClick={()=>setTab('movements')}>Movement History ({data.movements.length})</button>
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button className="btn btn-secondary" onClick={()=>{setMove(moveBlank);setShowMove(o=>!o);}}>🔀 Move Items</button>
+          <button className="btn btn-secondary" onClick={()=>setShowRefill(o=>!o)}>⚖️ Refill Gold/Silver</button>
+          <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Box</button>
+        </div>
+      </div>
+
+      {showMove && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-title">Move Items (box ⇄ box, pool, or another place)</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Date</label><input type="date" value={move.date} onChange={e=>mv('date',e.target.value)}/></div>
+            <div className="form-group"><label>From *</label>
+              <select value={move.from} onChange={e=>mv('from',e.target.value)}>
+                <option value="">— pick —</option>
+                {data.stock.filter(b=>num(b['Weight Grams'])>0).map(b=><option key={b.ID} value={b.ID}>{b['Box Name']} ({b.Metal}, {b['Weight Grams']}g)</option>)}
+                <option value="poolG">Old Gold Pool ({fmtG(derived.goldPool)})</option>
+                <option value="poolS">Old Silver Pool ({fmtG(derived.silverPool)})</option>
+                <option value="other">Other place (outside stock)</option>
+              </select>
+            </div>
+            {move.from==='other' && <div className="form-group"><label>From where</label><input placeholder="e.g. Home locker" value={move.otherFrom} onChange={e=>mv('otherFrom',e.target.value)}/></div>}
+            <div className="form-group"><label>To *</label>
+              <select value={move.to} onChange={e=>mv('to',e.target.value)}>
+                <option value="">— pick —</option>
+                {data.stock.map(b=><option key={b.ID} value={b.ID}>{b['Box Name']} ({b.Metal})</option>)}
+                <option value="poolG">Old Gold Pool</option>
+                <option value="poolS">Old Silver Pool</option>
+                <option value="other">Other place (leaves stock)</option>
+              </select>
+            </div>
+            {move.to==='other' && <div className="form-group"><label>To where</label><input placeholder="e.g. Given for melting" value={move.otherTo} onChange={e=>mv('otherTo',e.target.value)}/></div>}
+            {move.from==='other' && move.to==='other' && <div className="form-group"><label>Metal</label><select value={move.metal} onChange={e=>mv('metal',e.target.value)}><option>Gold</option><option>Silver</option></select></div>}
+            <div className="form-group"><label>What is moved</label><input placeholder="e.g. 2 rings" value={move.desc} onChange={e=>mv('desc',e.target.value)}/></div>
+            <div className="form-group"><label>Pieces</label><input type="number" value={move.pieces} onChange={e=>mv('pieces',e.target.value)}/></div>
+            <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" value={move.weight} onChange={e=>mv('weight',e.target.value)}/></div>
+            <div className="form-group"><label>Notes</label><input placeholder="Reason" value={move.notes} onChange={e=>mv('notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleMove} disabled={saving}>{saving?<span className="spinner"/>:'Save Move'}</button>
+            <button className="btn btn-secondary" onClick={()=>setShowMove(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showRefill && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-title">Refill Stock (bought/added loose gold or silver)</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Date</label><input type="date" value={refill.Date} onChange={e=>rf('Date',e.target.value)}/></div>
+            <div className="form-group"><label>Metal</label><select value={refill.Metal} onChange={e=>rf('Metal',e.target.value)}><option>Gold</option><option>Silver</option></select></div>
+            <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" placeholder="10.5" value={refill.weight} onChange={e=>rf('weight',e.target.value)}/></div>
+            <div className="form-group"><label>Cost (₹)</label><input type="number" placeholder="0 if no payment" value={refill.cost} onChange={e=>rf('cost',e.target.value)}/></div>
+            <div className="form-group"><label>Paid By</label><select value={refill.mode} onChange={e=>rf('mode',e.target.value)}><option value="None">No payment</option><option>Cash</option><option>UPI</option></select></div>
+            <div className="form-group"><label>Notes</label><input placeholder="Where from" value={refill.notes} onChange={e=>rf('notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleRefill} disabled={saving}>{saving?<span className="spinner"/>:'Save Refill'}</button>
+            <button className="btn btn-secondary" onClick={()=>setShowRefill(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {mode !== null && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-title">{mode==='add' ? 'New Box / Pocket / Container' : 'Edit Box'}</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Box Name *</label><input placeholder="e.g. Box 3 / Red Pocket" value={form['Box Name']} onChange={e=>f('Box Name',e.target.value)}/></div>
+            <div className="form-group"><label>Metal</label><select value={form.Metal} onChange={e=>f('Metal',e.target.value)}><option>Gold</option><option>Silver</option></select></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>What is inside</label><input placeholder="e.g. 4 rings, 2 chains, 1 bangle" value={form.Description} onChange={e=>f('Description',e.target.value)}/></div>
+            <div className="form-group"><label>Kept At (location)</label><input placeholder="e.g. Shop almirah / Bank locker" value={form.Location} onChange={e=>f('Location',e.target.value)}/></div>
+            <div className="form-group"><label>Pieces</label><input type="number" placeholder="7" value={form.Pieces} onChange={e=>f('Pieces',e.target.value)}/></div>
+            <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" placeholder="42.350" value={form['Weight Grams']} onChange={e=>f('Weight Grams',e.target.value)}/></div>
+            <div className="form-group"><label>Notes</label><input placeholder="Purity, source..." value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:mode==='add'?'Save Box':'Update Box'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {tab==='boxes' ? (
+      <div className="card">
+        {sorted.length === 0 ? <div className="empty"><p>No boxes yet — add your first box/pocket above.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Box</th><th>Metal</th><th>What's Inside</th><th>Kept At</th><th>Pieces</th><th>Weight</th><th>Status</th><th></th></tr></thead>
+          <tbody>{sorted.map(b => {
+            const hist = histFor===b.ID ? boxHistory(b) : null;
+            return (<React.Fragment key={b.ID}>
+            <tr>
+              <td className="name">{b['Box Name']}</td>
+              <td><span className={`badge ${b.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{b.Metal}</span></td>
+              <td>{b.Description||'—'}</td>
+              <td>{b.Location||'—'}</td>
+              <td className="mono">{b.Pieces||'—'}</td>
+              <td className="mono" style={{color:num(b['Weight Grams'])>0?'var(--text-primary)':'var(--text-muted)'}}>{fmtG(b['Weight Grams'])}</td>
+              <td><span className={`badge ${num(b['Weight Grams'])>0?'badge-green':'badge-red'}`}>{num(b['Weight Grams'])>0?'In Stock':'Empty'}</span></td>
+              <td style={{whiteSpace:'nowrap'}}>
+                <button className="btn btn-secondary btn-sm" title="History" onClick={()=>setHistFor(h=>h===b.ID?null:b.ID)}>🕘</button>{' '}
+                <button className="btn btn-secondary btn-sm" title="Edit" onClick={()=>openEdit(b)}>✏️</button>
+              </td>
+            </tr>
+            {hist && <tr><td colSpan={8} style={{background:'var(--navy)',padding:'10px 16px'}}>
+              {hist.length===0 ? <span style={{fontSize:12,color:'var(--text-muted)'}}>No recorded history for this box.</span> :
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {hist.map((e,i)=>(
+                  <div key={i} style={{display:'flex',gap:12,fontSize:12,alignItems:'baseline'}}>
+                    <span className="mono" style={{color:'var(--text-muted)',minWidth:80}}>{e.date||'—'}</span>
+                    <span style={{color:'var(--text-primary)',fontWeight:500}}>{e.what}</span>
+                    <span style={{color:'var(--text-secondary)'}}>{e.detail}</span>
+                  </div>
+                ))}
+              </div>}
+            </td></tr>}
+            </React.Fragment>);
+          })}</tbody>
+        </table></div>}
+      </div>
+      ) : (
+      <div className="card">
+        {data.movements.length === 0 ? <div className="empty"><p>No movements recorded yet. Use "Move Items" to log a shift between boxes, pool, or places.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>From</th><th>To</th><th>Metal</th><th>What</th><th>Pieces</th><th>Weight</th><th>Notes</th></tr></thead>
+          <tbody>{[...data.movements].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'')).map(m=>(
+            <tr key={m.ID}>
+              <td className="mono">{m.Date}</td>
+              <td className="name">{m.From}</td>
+              <td className="name">{m.To}</td>
+              <td><span className={`badge ${m.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{m.Metal}</span></td>
+              <td>{m.Description||'—'}</td>
+              <td className="mono">{m.Pieces||'—'}</td>
+              <td className="mono">{fmtG(m['Weight Grams'])}</td>
+              <td style={{fontSize:12}}>{m.Notes||'—'}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>}
+      </div>
+      )}
+    </div>
+  );
+}
+
+// ── NEW TRANSACTION ──────────────────────────────────────────────────────────
+function NewTransaction({ data, derived, onRefresh, onDone }) {
+  const [saving, setSaving] = useState(false);
+  const [customer, setCustomer] = useState('');
+  const [phone, setPhone] = useState('');
+  const [date, setDate] = useState(todayStr());
+  const [notes, setNotes] = useState('');
+
+  const blankSold = () => ({ key: uid('s'), source:'Box', boxId:'', desc:'', metal:'Gold', pieces:'', weight:'', rate:'', amount:'' });
+  const blankOld  = () => ({ key: uid('o'), metal:'Gold', desc:'', weight:'', rate:'', amount:'' });
+  const [sold, setSold] = useState([]);
+  const [old, setOld]   = useState([]);
+  const [cashIn, setCashIn]   = useState('');
+  const [upiIn, setUpiIn]     = useState('');
+  const [cashOut, setCashOut] = useState('');
+  const [upiOut, setUpiOut]   = useState('');
+
+  const boxes = data.stock.filter(b => num(b['Weight Grams']) > 0);
+
+  const updRow = (setList, key, patch) => setList(list => list.map(r => {
+    if (r.key !== key) return r;
+    const nr = { ...r, ...patch };
+    if ('weight' in patch || 'rate' in patch) {
+      const a = num(nr.weight) * num(nr.rate);
+      if (a > 0) nr.amount = String(Math.round(a));
+    }
+    return nr;
+  }));
+
+  const pickBox = (key, boxId) => {
+    const b = boxes.find(x => x.ID === boxId);
+    setSold(list => list.map(r => r.key===key ? { ...r, boxId, metal: b?b.Metal:r.metal, desc: b?(b.Description||b['Box Name']):r.desc } : r));
+  };
+
+  const saleTotal = sold.reduce((s,r)=>s+num(r.amount),0);
+  const oldTotal  = old.reduce((s,r)=>s+num(r.amount),0);
+  const net = saleTotal - oldTotal; // >0 customer pays us; <0 we pay customer
+  const settled = num(cashIn)+num(upiIn)-num(cashOut)-num(upiOut);
+  const balance = Math.round((net - settled)*100)/100; // >0 customer owes; <0 we owe
+
+  const handleSave = async () => {
+    if (!customer.trim()) { alert('Customer name is required.'); return; }
+    if (sold.length===0 && old.length===0) { alert('Add at least one item — sold or old jewel received.'); return; }
+    for (const r of sold) {
+      if (r.source==='Box') {
+        const b = boxes.find(x=>x.ID===r.boxId);
+        if (!b) { alert('Pick a box for every sold item (or change source to pool).'); return; }
+        if (num(r.weight) > num(b['Weight Grams']) + 0.0001) { alert(`"${b['Box Name']}" has only ${b['Weight Grams']} g — you entered ${r.weight} g.`); return; }
+      }
+      if (num(r.weight)<=0 || num(r.amount)<=0) { alert('Every sold item needs weight and amount.'); return; }
+    }
+    for (const r of old) {
+      if (num(r.weight)<=0 || num(r.amount)<=0) { alert('Every old-jewel item needs weight and amount.'); return; }
+    }
+    setSaving(true);
+    try {
+      const txnId = uid('TX');
+      const status = Math.abs(balance)<.5 ? 'Settled' : balance>0 ? 'Balance Due' : 'We Owe';
+      await appendRow('Transactions', [txnId, date, customer.trim(), phone, saleTotal, oldTotal, num(cashIn), num(upiIn), num(cashOut), num(upiOut), balance, status, notes]);
+
+      for (const r of sold) {
+        const src = r.source==='Box' ? 'Box' : 'Pool';
+        const metal = r.source==='SilverPool' ? 'Silver' : r.source==='GoldPool' ? 'Gold' : r.metal;
+        await appendRow('TxnItems', [uid('I'), txnId, src, r.source==='Box'?r.boxId:'', r.desc, metal, r.pieces, num(r.weight), num(r.rate), num(r.amount), 'Out']);
+        if (r.source==='Box') {
+          const b = data.stock.find(x=>x.ID===r.boxId);
+          const newW = Math.round((num(b['Weight Grams']) - num(r.weight))*1000)/1000;
+          const newP = b.Pieces!=='' && r.pieces!=='' ? Math.max(0, num(b.Pieces)-num(r.pieces)) : b.Pieces;
+          await updateRow('Stock', b._row, rowValues('Stock', { ...b, Pieces:newP, 'Weight Grams':newW, Status:newW>0?'In Stock':'Empty' }));
+        }
+      }
+      for (const r of old) {
+        await appendRow('TxnItems', [uid('I'), txnId, 'Pool', '', r.desc, r.metal, '', num(r.weight), num(r.rate), num(r.amount), 'In']);
+      }
+
+      const who = customer.trim();
+      await addLedger(date, 'In',  'Cash',    cashIn,  'Sale',     txnId, `From ${who}`);
+      await addLedger(date, 'In',  'Account', upiIn,   'Sale',     txnId, `UPI from ${who}`);
+      await addLedger(date, 'Out', 'Cash',    cashOut, 'Purchase', txnId, `Paid to ${who}`);
+      await addLedger(date, 'Out', 'Account', upiOut,  'Purchase', txnId, `UPI to ${who}`);
+
+      onRefresh();
+      onDone();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div className="card">
+        <div className="card-title">Customer & Date</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Customer Name *</label><input placeholder="Full name" value={customer} onChange={e=>setCustomer(e.target.value)}/></div>
+          <div className="form-group"><label>Phone</label><input placeholder="9876543210" value={phone} onChange={e=>setPhone(e.target.value)}/></div>
+          <div className="form-group"><label>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+          <div className="form-group"><label>Notes</label><input placeholder="Anything to remember" value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="section-row" style={{marginBottom:10}}>
+          <div className="card-title" style={{marginBottom:0}}>Items Sold / Given to Customer</div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>setSold(l=>[...l, blankSold()])}><Icon name="plus" size={12}/> Add Item</button>
+        </div>
+        {sold.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>Nothing sold — e.g. for a pure old-jewel purchase, leave this empty.</div>}
+        {sold.map(r => {
+          const b = boxes.find(x=>x.ID===r.boxId);
+          return (
+          <div className="item-row" key={r.key}>
+            <div className="form-group"><label>Source</label>
+              <select value={r.source} onChange={e=>updRow(setSold, r.key, {source:e.target.value, boxId:''})}>
+                <option value="Box">From Box</option>
+                <option value="GoldPool">Old Gold Pool ({fmtG(derived.goldPool)})</option>
+                <option value="SilverPool">Old Silver Pool ({fmtG(derived.silverPool)})</option>
+              </select>
+            </div>
+            {r.source==='Box' && <div className="form-group"><label>Box {b && <span style={{color:'var(--gold)'}}>· {b['Weight Grams']}g left</span>}</label>
+              <select value={r.boxId} onChange={e=>pickBox(r.key, e.target.value)}>
+                <option value="">— pick box —</option>
+                {boxes.map(x=><option key={x.ID} value={x.ID}>{x['Box Name']} ({x.Metal}, {x['Weight Grams']}g)</option>)}
+              </select>
+            </div>}
+            <div className="form-group"><label>Item</label><input placeholder="Ring / chain..." value={r.desc} onChange={e=>updRow(setSold,r.key,{desc:e.target.value})}/></div>
+            <div className="form-group"><label>Pieces</label><input type="number" value={r.pieces} onChange={e=>updRow(setSold,r.key,{pieces:e.target.value})}/></div>
+            <div className="form-group"><label>Weight (g)</label><input type="number" step="0.001" value={r.weight} onChange={e=>updRow(setSold,r.key,{weight:e.target.value})}/></div>
+            <div className="form-group"><label>Rate ₹/g</label><input type="number" value={r.rate} onChange={e=>updRow(setSold,r.key,{rate:e.target.value})}/></div>
+            <div className="form-group"><label>Amount ₹</label><input type="number" value={r.amount} onChange={e=>updRow(setSold,r.key,{amount:e.target.value})}/></div>
+            <button className="row-del" title="Remove" onClick={()=>setSold(l=>l.filter(x=>x.key!==r.key))}>✕</button>
+          </div>);
+        })}
+      </div>
+
+      <div className="card">
+        <div className="section-row" style={{marginBottom:10}}>
+          <div className="card-title" style={{marginBottom:0}}>Old Jewel Received from Customer</div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>setOld(l=>[...l, blankOld()])}><Icon name="plus" size={12}/> Add Old Jewel</button>
+        </div>
+        {old.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>No old gold/silver received in this transaction.</div>}
+        {old.map(r => (
+          <div className="item-row" key={r.key}>
+            <div className="form-group"><label>Metal</label><select value={r.metal} onChange={e=>updRow(setOld,r.key,{metal:e.target.value})}><option>Gold</option><option>Silver</option></select></div>
+            <div className="form-group"><label>Item</label><input placeholder="Old chain..." value={r.desc} onChange={e=>updRow(setOld,r.key,{desc:e.target.value})}/></div>
+            <div className="form-group"><label>Weight (g)</label><input type="number" step="0.001" value={r.weight} onChange={e=>updRow(setOld,r.key,{weight:e.target.value})}/></div>
+            <div className="form-group"><label>Rate ₹/g</label><input type="number" value={r.rate} onChange={e=>updRow(setOld,r.key,{rate:e.target.value})}/></div>
+            <div className="form-group"><label>Value ₹</label><input type="number" value={r.amount} onChange={e=>updRow(setOld,r.key,{amount:e.target.value})}/></div>
+            <button className="row-del" title="Remove" onClick={()=>setOld(l=>l.filter(x=>x.key!==r.key))}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Settlement</div>
+        <div className="settle-box">
+          <div className="settle-line"><span>Items sold / given</span><span className="mono">{fmtINR(saleTotal)}</span></div>
+          <div className="settle-line"><span>Old jewel received (−)</span><span className="mono">{fmtINR(oldTotal)}</span></div>
+          <div className="settle-line total"><span>{net>=0 ? 'Customer has to pay' : 'We have to pay customer'}</span><span className="mono" style={{color:net>=0?'var(--green)':'var(--red)'}}>{fmtINR(Math.abs(net))}</span></div>
+        </div>
+        <div className="form-grid" style={{marginTop:14}}>
+          {net>=0 ? (<>
+            <div className="form-group"><label>Cash Received (₹)</label><input type="number" value={cashIn} onChange={e=>setCashIn(e.target.value)}/></div>
+            <div className="form-group"><label>UPI Received (₹)</label><input type="number" value={upiIn} onChange={e=>setUpiIn(e.target.value)}/></div>
+          </>) : (<>
+            <div className="form-group"><label>Cash Paid to Customer (₹)</label><input type="number" value={cashOut} onChange={e=>setCashOut(e.target.value)}/></div>
+            <div className="form-group"><label>UPI Paid to Customer (₹)</label><input type="number" value={upiOut} onChange={e=>setUpiOut(e.target.value)}/></div>
+          </>)}
+        </div>
+        <div className="settle-box" style={{marginTop:14}}>
+          <div className="settle-line total">
+            <span>{Math.abs(balance)<.5 ? '✓ Fully settled' : balance>0 ? 'Balance customer owes (installments)' : 'Balance we owe customer'}</span>
+            <span className="mono" style={{color:Math.abs(balance)<.5?'var(--green)':'var(--gold)'}}>{fmtINR(Math.abs(balance))}</span>
+          </div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving…</>:'Save Transaction'}</button>
+          <button className="btn btn-secondary" onClick={onDone}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TRANSACTIONS LIST ────────────────────────────────────────────────────────
+function Transactions({ data, derived, onRefresh, onNew }) {
+  const [filter, setFilter] = useState('all');
+  const txns = [...derived.txnOutstanding].sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
+  const shown = txns.filter(t => filter==='all' ? true : filter==='pending' ? Math.abs(t.outstanding)>.5 : Math.abs(t.outstanding)<=.5);
+
+  return (
+    <div>
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All ({txns.length})</button>
+          <button className={`tab ${filter==='pending'?'active':''}`} onClick={()=>setFilter('pending')}>With Balance ({txns.filter(t=>Math.abs(t.outstanding)>.5).length})</button>
+          <button className={`tab ${filter==='settled'?'active':''}`} onClick={()=>setFilter('settled')}>Settled</button>
+        </div>
+        <button className="btn btn-primary" onClick={onNew}><Icon name="plus" size={14}/> New Transaction</button>
+      </div>
+      {shown.length===0 ? <div className="card"><div className="empty"><p>No transactions here yet.</p></div></div> :
+      <div className="gap-12">{shown.map(t => <TxnCard key={t.ID} t={t} data={data} onRefresh={onRefresh}/>)}</div>}
+    </div>
+  );
+}
+
+function TxnCard({ t, data, onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pay, setPay] = useState({ date: todayStr(), mode:'Cash', amount:'', notes:'' });
+
+  const items = data.txnItems.filter(i => i['Txn ID']===t.ID);
+  const payments = data.payments.filter(p => p['Ref Type']==='Transaction' && p['Ref ID']===t.ID);
+  const out = t.outstanding;
+  const settledNow = Math.abs(out) < .5;
+
+  const handlePay = async () => {
+    const amt = num(pay.amount);
+    if (amt<=0) { alert('Enter the amount.'); return; }
+    setSaving(true);
+    try {
+      // out>0: customer pays us (In); out<0: we pay customer (Out, stored negative so outstanding moves to 0)
+      const collecting = out > 0;
+      await appendRow('Payments', [uid('P'), pay.date, 'Transaction', t.ID, t.Customer, pay.mode, collecting?amt:-amt, '', pay.notes]);
+      await addLedger(pay.date, collecting?'In':'Out', pay.mode==='Cash'?'Cash':'Account', amt, 'Installment', t.ID, `${collecting?'From':'To'} ${t.Customer}`);
+      const remaining = out - (collecting?amt:-amt);
+      if (Math.abs(remaining)<.5 && t._row) {
+        const updated = { ...t, Status:'Settled' };
+        await updateRow('Transactions', t._row, rowValues('Transactions', updated));
+      }
+      setShowPay(false); setPay({ date: todayStr(), mode:'Cash', amount:'', notes:'' });
+      onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpen(o=>!o)}>
+        <div>
+          <div style={{fontWeight:600,fontSize:14}}>{t.Customer} <span style={{fontWeight:400,fontSize:12,color:'var(--text-muted)'}}>{t.Phone}</span></div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{t.Date} · sold {fmtINR(t['Sale Value'])} · old {fmtINR(t['Old Value'])}</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <span className={`badge ${settledNow?'badge-green':out>0?'badge-gold':'badge-red'}`}>
+            {settledNow?'Settled':out>0?`Customer owes ${fmtINR(out)}`:`We owe ${fmtINR(-out)}`}
+          </span>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+        {items.length>0 && <div className="table-wrap"><table>
+          <thead><tr><th>Direction</th><th>Item</th><th>Metal</th><th>Weight</th><th>Rate</th><th>Amount</th></tr></thead>
+          <tbody>{items.map(i=>(
+            <tr key={i.ID}>
+              <td><span className={`badge ${i.Direction==='Out'?'badge-blue':'badge-green'}`}>{i.Direction==='Out'?(i.Source==='Pool'?'Given (old pool)':'Sold'):'Old jewel in'}</span></td>
+              <td>{i.Description||'—'}</td>
+              <td><span className={`badge ${i.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{i.Metal}</span></td>
+              <td className="mono">{fmtG(i['Weight Grams'])}</td>
+              <td className="mono">{i.Rate?fmtINR(i.Rate)+'/g':'—'}</td>
+              <td className="mono">{fmtINR(i.Amount)}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>}
+
+        <div style={{display:'flex',gap:18,flexWrap:'wrap',marginTop:12,fontSize:12,color:'var(--text-secondary)'}}>
+          {num(t['Cash In'])>0 && <span>💵 Cash in: <b className="mono">{fmtINR(t['Cash In'])}</b></span>}
+          {num(t['UPI In'])>0 && <span>🏦 UPI in: <b className="mono">{fmtINR(t['UPI In'])}</b></span>}
+          {num(t['Cash Out'])>0 && <span>💵 Cash paid: <b className="mono">{fmtINR(t['Cash Out'])}</b></span>}
+          {num(t['UPI Out'])>0 && <span>🏦 UPI paid: <b className="mono">{fmtINR(t['UPI Out'])}</b></span>}
+          {t.Notes && <span>📝 {t.Notes}</span>}
+        </div>
+
+        {payments.length>0 && <CollapsibleSection title={`💰 Installments received (${payments.length})`} defaultOpen={true}>
+          <table><thead><tr><th>Date</th><th>Mode</th><th>Amount</th><th>Notes</th></tr></thead>
+            <tbody>{payments.map(p=>(<tr key={p.ID}><td className="mono">{p.Date}</td><td>{p.Mode}</td><td className="mono">{fmtINR(Math.abs(num(p.Amount)))}{num(p.Amount)<0?' (paid out)':''}</td><td>{p.Notes||'—'}</td></tr>))}</tbody></table>
+        </CollapsibleSection>}
+
+        {!settledNow && <div style={{marginTop:14}}>
+          {!showPay
+            ? <button className="btn btn-primary btn-sm" onClick={()=>setShowPay(true)}>{out>0?'💰 Collect Installment':'💸 Pay Customer'}</button>
+            : <div className="settle-box">
+                <div className="form-grid">
+                  <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
+                  <div className="form-group"><label>Mode</label><select value={pay.mode} onChange={e=>setPay(p=>({...p,mode:e.target.value}))}><option>Cash</option><option>UPI</option></select></div>
+                  <div className="form-group"><label>Amount (₹) — {fmtINR(Math.abs(out))} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
+                  <div className="form-group"><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
+                </div>
+                <div className="btn-row">
+                  <button className="btn btn-primary btn-sm" onClick={handlePay} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>setShowPay(false)}>Cancel</button>
+                </div>
+              </div>}
+        </div>}
+      </div>}
+    </div>
+  );
+}
+
+// ── LENDING ──────────────────────────────────────────────────────────────────
+function Lending({ data, derived, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const blank = { date: todayStr(), person:'', phone:'', type:'Cash', mode:'Cash', weight:'', amount:'', interest:'', due:'', notes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const handleSave = async () => {
+    if (!form.person.trim()) { alert('Person name required.'); return; }
+    if (num(form.amount)<=0) { alert('Enter the ₹ value to be returned (even for gold, enter its value).'); return; }
+    if (form.type!=='Cash' && num(form.weight)<=0) { alert('Enter the weight given.'); return; }
+    setSaving(true);
+    try {
+      const id = uid('LN');
+      await appendRow('Lending', [id, form.date, form.person.trim(), form.phone, form.type, form.type==='Cash'?form.mode:'', form.type==='Cash'?'':num(form.weight), num(form.amount), num(form.interest), form.due, 'Open', form.notes]);
+      if (form.type==='Cash') {
+        await addLedger(form.date, 'Out', form.mode==='Cash'?'Cash':'Account', form.amount, 'Lending', id, `Lent to ${form.person.trim()}`);
+      }
+      setForm(blank); setShowForm(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const lends = [...derived.lendOutstanding].sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
+  const open = lends.filter(l=>l.outstanding>.5);
+  const closed = lends.filter(l=>l.outstanding<=.5);
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">Outstanding to Collect</div><div className="stat-value gold">{fmtINR(derived.lendingDue)}</div><div className="stat-sub">{open.length} people · incl. interest till today</div></div>
+      </div>
+      <div className="section-row">
+        <h3>Lending / Help Given</h3>
+        <button className="btn btn-primary" onClick={()=>{setForm(blank);setShowForm(o=>!o);}}><Icon name="plus" size={14}/> Give Cash / Gold</button>
+      </div>
+
+      {showForm && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">New Lending</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Person *</label><input placeholder="Name" value={form.person} onChange={e=>f('person',e.target.value)}/></div>
+          <div className="form-group"><label>Phone</label><input value={form.phone} onChange={e=>f('phone',e.target.value)}/></div>
+          <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
+          <div className="form-group"><label>What Given</label><select value={form.type} onChange={e=>f('type',e.target.value)}><option>Cash</option><option>Gold</option><option>Silver</option></select></div>
+          {form.type==='Cash'
+            ? <div className="form-group"><label>Given By</label><select value={form.mode} onChange={e=>f('mode',e.target.value)}><option>Cash</option><option>UPI</option></select></div>
+            : <div className="form-group"><label>Weight (g) * <span style={{color:'var(--text-muted)'}}>from old pool</span></label><input type="number" step="0.001" value={form.weight} onChange={e=>f('weight',e.target.value)}/></div>}
+          <div className="form-group"><label>Value Given (₹) *</label><input type="number" placeholder="Principal value" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
+          <div className="form-group"><label>Interest % per month</label><input type="number" step="0.1" placeholder="0 = free help" value={form.interest} onChange={e=>f('interest',e.target.value)}/></div>
+          <div className="form-group"><label>Return By (date)</label><input type="date" value={form.due} onChange={e=>f('due',e.target.value)}/></div>
+          <div className="form-group"><label>Notes</label><input placeholder="Reason / agreement" value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+          <button className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
+        </div>
+      </div>}
+
+      {open.length===0 && closed.length===0 ? <div className="card"><div className="empty"><p>Nothing lent out yet.</p></div></div> : <>
+        {open.length>0 && <div className="gap-12" style={{marginBottom:16}}>{open.map(l=><LendCard key={l.ID} l={l} data={data} onRefresh={onRefresh}/>)}</div>}
+        {closed.length>0 && <CollapsibleSection title={`✓ Closed / fully returned (${closed.length})`}>
+          <div className="gap-12">{closed.map(l=><LendCard key={l.ID} l={l} data={data} onRefresh={onRefresh}/>)}</div>
+        </CollapsibleSection>}
+      </>}
+    </div>
+  );
+}
+
+function LendCard({ l, data, onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pay, setPay] = useState({ date: todayStr(), mode:'Cash', amount:'', weight:'', notes:'' });
+  const payments = data.payments.filter(p=>p['Ref Type']==='Lending' && p['Ref ID']===l.ID);
+  const overdue = l['Due Date'] && l.outstanding>.5 && l['Due Date'] < todayStr();
+
+  const handlePay = async () => {
+    const amt = num(pay.amount);
+    if (amt<=0) { alert('Enter the ₹ value returned.'); return; }
+    if ((pay.mode==='Gold'||pay.mode==='Silver') && num(pay.weight)<=0) { alert('Enter the weight returned.'); return; }
+    setSaving(true);
+    try {
+      await appendRow('Payments', [uid('P'), pay.date, 'Lending', l.ID, l.Person, pay.mode, amt, (pay.mode==='Gold'||pay.mode==='Silver')?num(pay.weight):'', pay.notes]);
+      if (pay.mode==='Cash' || pay.mode==='UPI') {
+        await addLedger(pay.date, 'In', pay.mode==='Cash'?'Cash':'Account', amt, 'Lending Return', l.ID, `From ${l.Person}`);
+      }
+      if (l.outstanding - amt < .5 && l._row) {
+        await updateRow('Lending', l._row, rowValues('Lending', { ...l, Status:'Closed' }));
+      }
+      setShowPay(false); setPay({ date: todayStr(), mode:'Cash', amount:'', weight:'', notes:'' });
+      onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpen(o=>!o)}>
+        <div>
+          <div style={{fontWeight:600,fontSize:14}}>{l.Person} <span style={{fontWeight:400,fontSize:12,color:'var(--text-muted)'}}>{l.Phone}</span></div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>
+            {l.Date} · gave {l.Type==='Cash'?fmtINR(l.Amount):`${l.Type} ${fmtG(l['Weight Grams'])} (worth ${fmtINR(l.Amount)})`}
+            {num(l['Interest %'])>0 ? <> · {l['Interest %']}%/mo interest</> : <> · free of cost</>}
+            {l['Due Date'] && <> · return by <span style={{color:overdue?'var(--red)':'var(--text-secondary)'}}>{l['Due Date']}</span></>}
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          {overdue && <span className="badge badge-red">Overdue</span>}
+          <span className={`badge ${l.outstanding<=.5?'badge-green':'badge-gold'}`}>{l.outstanding<=.5?'Returned ✓':`To collect ${fmtINR(l.outstanding)}`}</span>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+        {l.Notes && <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:10}}>📝 {l.Notes}</div>}
+        <div style={{display:'flex',gap:18,flexWrap:'wrap',marginBottom:12,fontSize:12,color:'var(--text-secondary)'}}>
+          <span>Principal: <b className="mono">{fmtINR(l.Amount)}</b></span>
+          <span>Interest till today{num(l['Interest %'])>0?` (${l['Interest %']}%/mo)`:''}: <b className="mono" style={{color:l.interest>0?'var(--gold)':'inherit'}}>{fmtINR(l.interest)}</b></span>
+          <span>Returned so far: <b className="mono" style={{color:'var(--green)'}}>{fmtINR(l.paid)}</b></span>
+          <span>Outstanding: <b className="mono" style={{color:l.outstanding>.5?'var(--gold)':'var(--green)'}}>{fmtINR(Math.max(0,l.outstanding))}</b></span>
+        </div>
+        {payments.length>0 && <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Mode</th><th>Value</th><th>Weight</th><th>Notes</th></tr></thead>
+          <tbody>{payments.map(p=>(<tr key={p.ID}><td className="mono">{p.Date}</td><td>{p.Mode}</td><td className="mono">{fmtINR(p.Amount)}</td><td className="mono">{p['Weight Grams']?fmtG(p['Weight Grams']):'—'}</td><td>{p.Notes||'—'}</td></tr>))}</tbody>
+        </table></div>}
+        {l.outstanding>.5 && <div style={{marginTop:12}}>
+          {!showPay
+            ? <button className="btn btn-primary btn-sm" onClick={()=>setShowPay(true)}>💰 Record Return / Installment</button>
+            : <div className="settle-box">
+                <div className="form-grid">
+                  <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
+                  <div className="form-group"><label>Returned As</label><select value={pay.mode} onChange={e=>setPay(p=>({...p,mode:e.target.value}))}><option>Cash</option><option>UPI</option><option>Gold</option><option>Silver</option></select></div>
+                  <div className="form-group"><label>Value (₹) — {fmtINR(l.outstanding)} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
+                  {(pay.mode==='Gold'||pay.mode==='Silver') && <div className="form-group"><label>Weight (g) — goes back to pool</label><input type="number" step="0.001" value={pay.weight} onChange={e=>setPay(p=>({...p,weight:e.target.value}))}/></div>}
+                  <div className="form-group"><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
+                </div>
+                <div className="btn-row">
+                  <button className="btn btn-primary btn-sm" onClick={handlePay} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>setShowPay(false)}>Cancel</button>
+                </div>
+              </div>}
+        </div>}
+      </div>}
+    </div>
+  );
+}
+
+// ── LEDGER ───────────────────────────────────────────────────────────────────
+function Ledger({ data, derived, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const blank = { date: todayStr(), direction:'In', mode:'Cash', amount:'', category:'Opening Balance', notes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const [tf, setTf] = useState({ date: todayStr(), dir:'CashToAccount', amount:'' });
+
+  const handleSave = async () => {
+    if (num(form.amount)<=0) { alert('Enter amount.'); return; }
+    setSaving(true);
+    try {
+      await addLedger(form.date, form.direction, form.mode, form.amount, form.category, '', form.notes);
+      setForm(blank); setShowForm(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const handleTransfer = async () => {
+    if (num(tf.amount)<=0) { alert('Enter amount.'); return; }
+    setSaving(true);
+    try {
+      const toAcct = tf.dir==='CashToAccount';
+      await addLedger(tf.date, 'Out', toAcct?'Cash':'Account', tf.amount, 'Transfer', '', toAcct?'Deposited to account':'Withdrawn to cash');
+      await addLedger(tf.date, 'In',  toAcct?'Account':'Cash', tf.amount, 'Transfer', '', toAcct?'Deposited to account':'Withdrawn to cash');
+      setTf({ date: todayStr(), dir:'CashToAccount', amount:'' }); setShowTransfer(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const rows = [...data.ledger].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
+  const shown = rows.filter(r => filter==='all'?true : filter==='cash'?r.Mode==='Cash' : r.Mode!=='Cash');
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">💵 Cash in Hand</div><div className={`stat-value ${derived.cashInHand>=0?'green':'red'}`}>{fmtINR(derived.cashInHand)}</div></div>
+        <div className="stat-card"><div className="stat-label">🏦 Account / UPI</div><div className={`stat-value ${derived.accountBal>=0?'green':'red'}`}>{fmtINR(derived.accountBal)}</div></div>
+        <div className="stat-card"><div className="stat-label">Total Money</div><div className="stat-value">{fmtINR(derived.cashInHand+derived.accountBal)}</div></div>
+      </div>
+
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All</button>
+          <button className={`tab ${filter==='cash'?'active':''}`} onClick={()=>setFilter('cash')}>Cash</button>
+          <button className={`tab ${filter==='account'?'active':''}`} onClick={()=>setFilter('account')}>Account</button>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-secondary" onClick={()=>setShowTransfer(o=>!o)}>🔁 Cash ⇄ Account</button>
+          <button className="btn btn-primary" onClick={()=>setShowForm(o=>!o)}><Icon name="plus" size={14}/> Manual Entry</button>
+        </div>
+      </div>
+
+      {showTransfer && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Transfer Between Cash and Account</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Date</label><input type="date" value={tf.date} onChange={e=>setTf(p=>({...p,date:e.target.value}))}/></div>
+          <div className="form-group"><label>Direction</label><select value={tf.dir} onChange={e=>setTf(p=>({...p,dir:e.target.value}))}>
+            <option value="CashToAccount">Cash → Account (deposit)</option>
+            <option value="AccountToCash">Account → Cash (withdraw)</option>
+          </select></div>
+          <div className="form-group"><label>Amount (₹)</label><input type="number" value={tf.amount} onChange={e=>setTf(p=>({...p,amount:e.target.value}))}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleTransfer} disabled={saving}>{saving?<span className="spinner"/>:'Save Transfer'}</button>
+          <button className="btn btn-secondary" onClick={()=>setShowTransfer(false)}>Cancel</button>
+        </div>
+      </div>}
+
+      {showForm && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Manual Ledger Entry (opening balance, expense, other)</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
+          <div className="form-group"><label>Direction</label><select value={form.direction} onChange={e=>f('direction',e.target.value)}><option value="In">Money In</option><option value="Out">Money Out</option></select></div>
+          <div className="form-group"><label>Where</label><select value={form.mode} onChange={e=>f('mode',e.target.value)}><option>Cash</option><option>Account</option></select></div>
+          <div className="form-group"><label>Amount (₹)</label><input type="number" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
+          <div className="form-group"><label>Category</label><select value={form.category} onChange={e=>f('category',e.target.value)}>
+            <option>Opening Balance</option><option>Expense</option><option>Personal</option><option>Other</option>
+          </select></div>
+          <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save Entry'}</button>
+          <button className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
+        </div>
+      </div>}
+
+      <div className="card">
+        {shown.length===0 ? <div className="empty"><p>No ledger entries yet. Start by adding your opening balances (Manual Entry).</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>In/Out</th><th>Where</th><th>Amount</th><th>Category</th><th>Notes</th></tr></thead>
+          <tbody>{shown.slice(0,200).map(r=>(
+            <tr key={r.ID}>
+              <td className="mono">{r.Date}</td>
+              <td><span className={`badge ${r.Direction==='In'?'badge-green':'badge-red'}`}>{r.Direction==='In'?'↓ In':'↑ Out'}</span></td>
+              <td>{r.Mode}</td>
+              <td className="mono" style={{color:r.Direction==='In'?'var(--green)':'var(--red)'}}>{r.Direction==='In'?'+':'−'}{fmtINR(r.Amount)}</td>
+              <td><span className="badge badge-blue">{r.Category}</span></td>
+              <td style={{fontSize:12}}>{r.Notes||'—'}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── ASK AI ───────────────────────────────────────────────────────────────────
+function NLPQuery({ data, derived }) {
+  const [messages, setMessages] = useState([{role:'ai',text:'Ask me anything about your jewel stock, transactions, balances or lending. 💎'}]);
+  const [input, setInput] = useState('');
+  const [loading, setLoad] = useState(false);
+  const endRef = useRef(null);
+
+  const suggestions = [
+    'How much gold stock do I have in total?',
+    'Who still owes me money?',
+    'How much cash and account balance do I have?',
+    'Show this month\'s sales total',
+    'What lending is overdue and how much interest has built up?',
+    'What items were moved recently?',
+  ];
+
+  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
+
+  const ask = async (q) => {
+    if (!q.trim()||loading) return;
+    setMessages(m=>[...m,{role:'user',text:q}]); setInput(''); setLoad(true);
+    try {
+      const answer = await askAI(q, data, derived);
+      setMessages(m=>[...m,{role:'ai',text:answer}]);
+    } catch(e) { setMessages(m=>[...m,{role:'ai',text:'Error: '+e.message}]); }
+    setLoad(false);
+  };
+
+  return (
+    <div>
+      <div className="section-row"><h3>Ask a Question</h3><span style={{fontSize:12,color:'var(--text-muted)'}}>Claude or Gemini — set key in Setup</span></div>
+      <div className="nlp-panel">
+        <div className="nlp-messages">
+          {messages.map((m,i)=>(
+            <div className="msg" key={i}>
+              <div className={`msg-avatar ${m.role}`}>{m.role==='user'?'You':'AI'}</div>
+              <div className={`msg-bubble ${m.role}`} style={{whiteSpace:'pre-wrap'}}>{m.text}</div>
+            </div>
+          ))}
+          {loading && <div className="msg"><div className="msg-avatar ai">AI</div><div className="msg-bubble" style={{color:'var(--text-muted)'}}>Thinking...</div></div>}
+          <div ref={endRef}/>
+        </div>
+        <div className="nlp-suggestions">{suggestions.map(s=><button key={s} className="nlp-chip" onClick={()=>ask(s)}>{s}</button>)}</div>
+        <div className="nlp-input-row">
+          <textarea className="nlp-input" placeholder="Ask anything about your jewel business..." value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input);}}}
+          />
+          <button className="btn btn-primary" onClick={()=>ask(input)} disabled={loading||!input.trim()}><Icon name="send" size={14}/></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PIN SCREEN ───────────────────────────────────────────────────────────────
+// If URL contains ?cfg=... load that encrypted blob into localStorage automatically
+(function() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const blob = params.get('cfg');
+    if (blob) {
+      localStorage.setItem(STORE_KEY, decodeURIComponent(blob));
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e) {}
+})();
+
+function PinScreen({ onUnlock }) {
+  const isFirstTime = !hasEncryptedConfig();
+  const [mode, setMode] = useState(isFirstTime ? 'setup' : 'unlock');
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [form, setForm] = useState({ spreadsheetId: '', clientId: '', geminiKey: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [importCode, setImportCode] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const PIN_LEN = 4;
+
+  const handleKey = async (k) => {
+    if (loading) return;
+    setError('');
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+
+    if (mode === 'unlock') {
+      setLoading(true);
+      const cfg = await loadConfig(next);
+      if (cfg) {
+        setRuntimeConfig(cfg);
+        onUnlock();
+      } else {
+        setError('Wrong PIN — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+      setLoading(false);
+    } else if (mode === 'confirm') {
+      if (next === confirmPin) {
+        setLoading(true);
+        await persistConfig(next, form);
+        setRuntimeConfig(form);
+        setShowShare(true);
+        setLoading(false);
+      } else {
+        setError('PINs do not match — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+    }
+  };
+
+  const handleSetupNext = () => {
+    if (!form.spreadsheetId || !form.clientId) { setError('Sheet ID and Client ID are required.'); return; }
+    setError('');
+    setMode('choose-pin');
+    setPin('');
+  };
+
+  const handleChoosePin = (k) => {
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+    setConfirmPin(next);
+    setPin('');
+    setMode('confirm');
+  };
+
+  const handleImport = () => {
+    const code = importCode.trim();
+    if (!code) { setError('Paste the share code first.'); return; }
+    try {
+      localStorage.setItem(STORE_KEY, code);
+      setMode('unlock');
+      setPin(''); setError(''); setShowImport(false);
+    } catch(e) { setError('Invalid code — ask the owner to share again.'); }
+  };
+
+  const copyShareLink = () => {
+    const blob = localStorage.getItem(STORE_KEY);
+    if (!blob) return;
+    const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+    navigator.clipboard.writeText(url).then(()=>alert('Share link copied!\n\nSend it to family. When they open it, the app auto-loads — they just need the PIN.'));
+  };
+
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','del'];
+
+  if (showShare) return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo" style={{background:'var(--green)'}}>✓</div>
+        <div className="pin-title">Setup Complete!</div>
+        <div className="pin-sub">Share access with family by sending the share link. They open it, enter the PIN, and they're in.</div>
+        <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',marginBottom:10}} onClick={copyShareLink}>📋 Copy Share Link</button>
+        <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:16,lineHeight:1.6,padding:'8px',background:'rgba(0,0,0,.2)',borderRadius:6}}>
+          The link contains your encrypted config. Only the PIN can decrypt it — safe to share over WhatsApp.
+        </div>
+        <button className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}} onClick={()=>{ setRuntimeConfig(form); onUnlock(); }}>Enter App →</button>
+      </div>
+    </div>
+  );
+
+  if (mode === 'setup') return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo">💎</div>
+        <div className="pin-title">Jewel Manager — First-time Setup</div>
+        <div className="pin-sub">Enter your keys below. They'll be encrypted with a PIN — never stored in plain text. Use a NEW Google Sheet (separate from the rent one).</div>
+        <div className="pin-setup-form">
+          <div className="form-group"><label>Google Sheet ID</label><input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={form.spreadsheetId} onChange={e => setForm({...form, spreadsheetId: e.target.value})}/></div>
+          <div className="form-group"><label>Google OAuth Client ID</label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
+          <div className="form-group">
+            <label>AI API Key — <span style={{color:'var(--text-muted)',fontWeight:400}}>optional</span></label>
+            <input type="password" placeholder="sk-ant-... (Claude) or AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
+          </div>
+          {error && <div className="pin-error">{error}</div>}
+          <button className="btn btn-primary" style={{width:'100%',marginTop:8,justifyContent:'center'}} onClick={handleSetupNext}>Next — Choose PIN →</button>
+          <div style={{textAlign:'center',marginTop:12}}>
+            <span className="pin-toggle" onClick={()=>setShowImport(o=>!o)}>Already have a share code? Import it</span>
+          </div>
+          {showImport && <div style={{marginTop:10}}>
+            <div className="form-group"><label>Paste Share Code</label><textarea style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:6,padding:'8px',color:'var(--text-primary)',fontSize:11,width:'100%',height:80,fontFamily:'monospace'}} value={importCode} onChange={e=>setImportCode(e.target.value)} placeholder="Paste the share code here..."/></div>
+            <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} onClick={handleImport}>Import & Enter PIN</button>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+
+  const modeLabel    = mode === 'choose-pin' ? 'Choose a 4-digit PIN' : mode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN';
+  const modeSubLabel = mode === 'choose-pin' ? 'Family members will use this PIN' : mode === 'confirm' ? 'Enter the same PIN again to confirm' : 'Keys are encrypted — PIN never leaves your device';
+
+  return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo">💎</div>
+        <div className="pin-title">{modeLabel}</div>
+        <div className="pin-sub">{modeSubLabel}</div>
+        <div className="pin-dots">
+          {Array.from({length: PIN_LEN}).map((_, i) => (
+            <div key={i} className={`pin-dot ${i < pin.length ? (error ? 'error' : 'filled') : ''}`}/>
+          ))}
+        </div>
+        <div className="pin-keypad">
+          {keys.map((k, i) => k === '' ? <div key={i}/> : (
+            <button key={i} className={`pin-key ${k === 'del' ? 'del' : ''}`}
+              onClick={() => mode === 'choose-pin' ? handleChoosePin(k) : handleKey(k)}
+              disabled={loading}
+            >{k === 'del' ? '⌫' : k}</button>
+          ))}
+        </div>
+        <div className="pin-error">{error}</div>
+        {mode === 'unlock' && (<>
+          <span className="pin-toggle" onClick={copyShareLink}>📋 Get share link (for new browser)</span>
+          <span className="pin-toggle" style={{marginTop:6}} onClick={() => { setMode('setup'); setPin(''); localStorage.removeItem(STORE_KEY); }}>
+            Reset &amp; re-enter keys
+          </span>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// ── SETUP PAGE ───────────────────────────────────────────────────────────────
+function Setup() {
+  const cfg = getConfig();
+  const [showChange, setShowChange] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [aiKey, setAiKey] = useState('');
+  const [aiMsg, setAiMsg] = useState('');
+
+  const handleChangePIN = async () => {
+    if (!oldPin || !newPin || !confirmPin) { setErr('Fill all fields.'); return; }
+    if (newPin !== confirmPin) { setErr('New PINs do not match.'); return; }
+    if (newPin.length < 4) { setErr('PIN must be 4 digits.'); return; }
+    const existing = await loadConfig(oldPin);
+    if (!existing) { setErr('Current PIN is incorrect.'); return; }
+    await persistConfig(newPin, existing);
+    setMsg('PIN changed successfully!'); setErr(''); setOldPin(''); setNewPin(''); setConfirmPin(''); setShowChange(false);
+  };
+
+  const saveAiKey = async () => {
+    if (!aiKey.trim()) { setAiMsg('Paste a key first.'); return; }
+    const newCfg = { spreadsheetId: cfg.spreadsheetId, clientId: cfg.clientId, geminiKey: aiKey.trim() };
+    const pin = window.prompt('Enter your PIN to save the new AI key:');
+    if (!pin) { setAiMsg('Cancelled.'); return; }
+    const check = await loadConfig(pin);
+    if (!check) { setAiMsg('Wrong PIN.'); return; }
+    setRuntimeConfig(newCfg);
+    await persistConfig(pin, newCfg);
+    setAiMsg('✓ AI key saved!');
+    setAiKey('');
+  };
+
+  return (
+    <div>
+      <div className="section-row"><h3>Setup</h3></div>
+
+      <div className="setup-step">
+        <div className="setup-num done"><Icon name="check" size={14}/></div>
+        <div className="setup-text">
+          <h3>Keys stored encrypted ✓</h3>
+          <p>Your Sheet ID, Client ID, and AI key are encrypted with AES-256 using your PIN. Never stored in plain text, never in source code. Safe with a public repo. This app uses its own Google Sheet — keep it separate from the rent one.</p>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.accessToken ? 'done' : ''}`}>{cfg.accessToken ? <Icon name="check" size={14}/> : '2'}</div>
+        <div className="setup-text">
+          <h3>Sign in with Google</h3>
+          <p>Authorize access to your Google Sheet. On first load the app creates all needed tabs (Stock, Transactions, TxnItems, Lending, Payments, Ledger, Refills, Movements) automatically.</p>
+          <div className="config-status">
+            <div className={`dot ${cfg.accessToken ? 'dot-green' : 'dot-red'}`}/>
+            <span style={{fontSize:12,color:cfg.accessToken?'var(--green)':'var(--red)'}}>{cfg.accessToken ? 'Signed in — Google Sheets access active' : 'Not signed in'}</span>
+          </div>
+          <button className="btn btn-primary" style={{marginTop:10}} onClick={signInWithGoogle}>Sign in with Google →</button>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num">3</div>
+        <div className="setup-text">
+          <h3>Share access with family</h3>
+          <p>1. <strong>Google Sheet:</strong> Share → add their Gmail → Editor access<br/>
+          2. <strong>Google Cloud Console:</strong> OAuth consent screen → Test users → add their Gmail<br/>
+          3. Send the share link below — they open it, enter the PIN, sign in with Google. Done.</p>
+          <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={()=>{
+            const blob = localStorage.getItem(STORE_KEY);
+            if (!blob) { alert('No config found — complete setup first.'); return; }
+            const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+            navigator.clipboard.writeText(url).then(()=>alert('Share link copied!'));
+          }}>📋 Copy Share Link</button>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.geminiKey?'done':''}`}>{cfg.geminiKey?<Icon name="check" size={14}/>:'AI'}</div>
+        <div className="setup-text">
+          <h3>AI API Key {cfg.geminiKey ? <span style={{fontSize:12,color:'var(--green)',fontWeight:400}}>✓ Set</span> : <span style={{fontSize:12,color:'var(--gold)',fontWeight:400}}>Not set — Ask AI won't work</span>}</h3>
+          <p>Paste a Claude key (<code>sk-ant-...</code>) from <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> or a Gemini key (<code>AIza...</code>) from <a href="https://aistudio.google.com/apikey" target="_blank" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a>.</p>
+          <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+            <div className="form-group" style={{flex:1,minWidth:200,marginBottom:0}}>
+              <input type="password" placeholder="sk-ant-... or AIzaSy..." value={aiKey} onChange={e=>setAiKey(e.target.value)}/>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={saveAiKey}>Save Key</button>
+            {aiMsg && <span style={{fontSize:12,color:aiMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{aiMsg}</span>}
+          </div>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num">5</div>
+        <div className="setup-text">
+          <h3>Change PIN</h3>
+          <p>Change your shared PIN at any time.</p>
+          {!showChange
+            ? <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={() => setShowChange(true)}>Change PIN</button>
+            : <div style={{marginTop:12}}>
+                <div className="form-grid" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
+                  <div className="form-group"><label>Current PIN</label><input type="password" maxLength={4} placeholder="••••" value={oldPin} onChange={e => setOldPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>New PIN</label><input type="password" maxLength={4} placeholder="••••" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>Confirm New PIN</label><input type="password" maxLength={4} placeholder="••••" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g,''))}/></div>
+                </div>
+                {err && <div style={{fontSize:12,color:'var(--red)',marginTop:6}}>{err}</div>}
+                {msg && <div style={{fontSize:12,color:'var(--green)',marginTop:6}}>{msg}</div>}
+                <div className="btn-row">
+                  <button className="btn btn-primary" onClick={handleChangePIN}>Save New PIN</button>
+                  <button className="btn btn-secondary" onClick={() => { setShowChange(false); setErr(''); }}>Cancel</button>
+                </div>
+              </div>
+          }
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num" style={{background:'var(--red-light)',color:'var(--red)'}}>!</div>
+        <div className="setup-text">
+          <h3>Clear Cache &amp; Reset PIN</h3>
+          <p>Clears your encrypted keys from this browser. <strong>Your Google Sheet data is NOT affected.</strong></p>
+          <button className="btn btn-danger btn-sm" style={{marginTop:10}} onClick={()=>{
+            if(window.confirm('Clear all cached keys and sign out? Your Sheet data is safe.')) {
+              localStorage.removeItem(STORE_KEY);
+              localStorage.removeItem(TOKEN_KEY);
+              window.location.reload();
+            }
+          }}>Clear Cache &amp; Reset PIN</button>
+        </div>
+      </div>
+
+      <div style={{marginTop:16,padding:'14px 16px',background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:8,fontSize:12,color:'var(--text-secondary)',lineHeight:1.7}}>
+        <strong style={{color:'var(--green)'}}>Your data is safe:</strong> Everything is stored in your own Google Sheet. Keys are AES-256 encrypted in localStorage. No server involved.
+      </div>
+    </div>
+  );
+}
+
+// ── ROOT APP ──────────────────────────────────────────────────────────────────
+function App() {
+  const [unlocked, setUnlocked] = useState(false);
+  const [page, setPage] = useState('dashboard');
+  const [data, setData] = useState({ stock: [], transactions: [], txnItems: [], lending: [], payments: [], ledger: [], refills: [], movements: [] });
+  const [loading, setLoading] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => { parseTokenFromHash(); }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    const cfg = getConfig();
+    setAuthed(!!(cfg.accessToken && cfg.spreadsheetId));
+  }, [unlocked]);
+
+  const loadData = useCallback(async () => {
+    if (!unlocked) return;
+    const cfg = getConfig();
+    if (!cfg.accessToken || !cfg.spreadsheetId) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      await initSheets();
+      const [stock, transactions, txnItems, lending, payments, ledger, refills, movements] = await Promise.all([
+        readSheet('Stock'), readSheet('Transactions'), readSheet('TxnItems'),
+        readSheet('Lending'), readSheet('Payments'), readSheet('Ledger'), readSheet('Refills'), readSheet('Movements'),
+      ]);
+      setData({ stock, transactions, txnItems, lending, payments, ledger, refills, movements });
+      setAuthed(true);
+    } catch (e) {
+      console.error('loadData error:', e);
+      if (e.message.includes('Session expired') || e.message.includes('Not authenticated')) {
+        setAuthed(false);
+        setLoadError('Session expired — please sign in again in Setup.');
+      } else {
+        setLoadError('Load error: ' + e.message);
+      }
+    }
+    setLoading(false);
+  }, [unlocked]);
+
+  useEffect(() => { if (unlocked) loadData(); }, [loadData, unlocked]);
+
+  const derived = useMemo(() => computeDerived(data), [data]);
+
+  const nav = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
+    { id: 'stock', label: 'Stock', icon: 'box', section: 'Manage' },
+    { id: 'newtxn', label: 'New Transaction', icon: 'exchange', section: 'Manage' },
+    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Manage' },
+    { id: 'lending', label: 'Lending', icon: 'hand', section: 'Manage' },
+    { id: 'ledger', label: 'Cash & Account', icon: 'currency', section: 'Manage' },
+    { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
+    { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
+  ];
+
+  const sections = [...new Set(nav.map(n => n.section))];
+  const titles = {
+    dashboard: ['Dashboard', 'Stock, money and balances at a glance'],
+    stock: ['Stock', 'Boxes, pockets & loose old gold/silver'],
+    newtxn: ['New Transaction', 'Sell, buy old jewel, exchange — all in one'],
+    transactions: ['Transactions', 'History, balances & installments'],
+    lending: ['Lending', 'Gold or cash given to help — track returns'],
+    ledger: ['Cash & Account', 'Every rupee movement, cash in hand & account'],
+    nlp: ['Ask AI', 'Natural language questions about your data'],
+    setup: ['Setup', 'Google Sheets, sharing and API keys'],
+  };
+  const [title, subtitle] = titles[page] || ['', ''];
+
+  const renderPage = () => {
+    if (!authed && page !== 'setup') {
+      return (
+        <div className="card" style={{maxWidth:480,margin:'40px auto',textAlign:'center',padding:'32px'}}>
+          <div style={{fontSize:32,marginBottom:16}}>💎</div>
+          <h2 style={{marginBottom:8,fontSize:16}}>Welcome to Jewel Manager</h2>
+          <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20,lineHeight:1.6}}>Connect a Google Sheet to get started. All stock, transactions and cash movements will be stored securely in your own Sheet.</p>
+          <button className="btn btn-primary" onClick={() => setPage('setup')}>Start Setup →</button>
+        </div>
+      );
+    }
+    switch (page) {
+      case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage}/>;
+      case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
+      case 'newtxn': return <NewTransaction data={data} derived={derived} onRefresh={loadData} onDone={()=>setPage('transactions')}/>;
+      case 'transactions': return <Transactions data={data} derived={derived} onRefresh={loadData} onNew={()=>setPage('newtxn')}/>;
+      case 'lending': return <Lending data={data} derived={derived} onRefresh={loadData}/>;
+      case 'ledger': return <Ledger data={data} derived={derived} onRefresh={loadData}/>;
+      case 'nlp': return <NLPQuery data={data} derived={derived}/>;
+      case 'setup': return <Setup/>;
+      default: return null;
+    }
+  };
+
+  if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />;
+
+  return (
+    <>
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="logo-mark">💎</div>
+          <h1>Jewel Manager</h1>
+          <p>Family jewel business</p>
+        </div>
+        <nav className="sidebar-nav">
+          {sections.map(section => (
+            <div className="nav-section" key={section}>
+              <div className="nav-section-label">{section}</div>
+              {nav.filter(n => n.section === section).map(n => (
+                <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => setPage(n.id)}>
+                  <Icon name={n.icon} size={16}/>
+                  <span>{n.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          {!authed && <div className="setup-badge" onClick={() => setPage('setup')}>⚙ Complete setup</div>}
+          {authed && loading && <div style={{fontSize:12,color:'var(--text-muted)',textAlign:'center'}}>Syncing...</div>}
+          {authed && !loading && <div style={{fontSize:11,color:'var(--text-muted)',textAlign:'center',cursor:'pointer'}} onClick={loadData}>● Live — click to refresh</div>}
+        </div>
+      </aside>
+      <main className="main">
+        <div className="topbar">
+          <div>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
+          </div>
+          {authed && page !== 'setup' && (
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {loading && <span style={{fontSize:12,color:'var(--text-muted)'}}>Loading...</span>}
+              <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
+                {loading ? <span className="spinner"/> : '↻'} Refresh
+              </button>
+            </div>
+          )}
+        </div>
+        {loadError && (
+          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 24px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span>⚠️ {loadError}</span>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+          </div>
+        )}
+        <div className="content">{renderPage()}</div>
+      </main>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
