@@ -75,7 +75,7 @@
     .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
     /* Tables */
-    .table-wrap { overflow-x: auto; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
     td { padding: 12px; border-bottom: 1px solid rgba(42,65,102,.5); color: var(--text-secondary); vertical-align: middle; }
@@ -165,7 +165,33 @@
     .section-row h3 { font-size: 15px; font-weight: 600; }
     .gap-12 { display: flex; flex-direction: column; gap: 12px; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .sidebar { width: 56px; } .sidebar .sidebar-logo h1, .sidebar .nav-item span, .nav-section-label, .sidebar-logo p, .sidebar-footer { display: none; } .nav-item { justify-content: center; padding: 10px; } }
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
+      .sidebar { width: 56px; }
+      .sidebar .sidebar-logo h1, .sidebar .nav-item span, .nav-section-label, .sidebar-logo p, .sidebar-footer { display: none; }
+      .nav-item { justify-content: center; padding: 10px; }
+      /* Layout spacing */
+      .content { padding: 12px; }
+      .topbar { padding: 10px 14px; }
+      .topbar p { display: none; }
+      /* Stats — 2 cols on mobile */
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      /* Tabs — full width, scrollable */
+      .tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+      .tab { white-space: nowrap; }
+      /* Forms — single column */
+      .form-grid { grid-template-columns: 1fr; }
+      /* Tables — allow horizontal scroll instead of collapsing */
+      .table-wrap table { width: max-content; min-width: 100%; }
+      /* NLP / AI chat */
+      .nlp-panel { height: 360px; }
+      .nlp-suggestions { display: none; }
+      /* PropCard / PropertyRentCard header right cluster */
+      .prop-card-right { gap: 6px !important; }
+      .prop-occ-badge-header { display: none !important; }
+      /* Month year grid — stack vertically */
+      .month-year-grid { grid-template-columns: 1fr !important; }
+    }
 
     /* PIN screen */
     .pin-screen { position: fixed; inset: 0; background: var(--navy); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -773,7 +799,7 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
             <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{p.Address||p.Type}</div>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:14}}>
+        <div className="prop-card-right" style={{display:'flex',alignItems:'center',gap:14}}>
           <div style={{textAlign:'right'}}>
             <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(p['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
             <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
@@ -781,7 +807,7 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
               ? <div style={{fontSize:11,marginTop:2}}>Last paid: <span style={{color:'var(--green)',fontWeight:600}}>{lastPaidRent.Month} {lastPaidRent.Year}</span></div>
               : <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>No rent recorded</div>}
           </div>
-          <span className={`badge ${occColor}`}>{p.Occupancy||'Occupied'}</span>
+          <span className={`badge ${occColor} prop-occ-badge-header`}>{p.Occupancy||'Occupied'}</span>
           <EditBtn onClick={e=>{e.stopPropagation();onEdit(p);}}/>
           <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
         </div>
@@ -1291,7 +1317,7 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
                   .forEach(r=>{const k=`${r.Month}|${r.Year}`;_paidMap[k]=(_paidMap[k]||0)+Number(r.Amount||0);});
               }
               return <>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                <div className="month-year-grid" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
                   {[String(Number(curYear)-1), curYear].map(yr=>(
                     <div key={yr}>
                       <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:600}}>{yr}</div>
@@ -1401,13 +1427,13 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
       {/* ── MONTH VIEW ── */}
       {viewTab==='month' && (<>
         <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13}} value={filterMonth} onChange={e=>setFM(e.target.value)}>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,flex:'1 1 auto',minWidth:120}} value={filterMonth} onChange={e=>setFM(e.target.value)}>
             {MONTHS.map(m=><option key={m}>{m}</option>)}
           </select>
-          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13}} value={filterYear} onChange={e=>setFY(e.target.value)}>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,minWidth:80}} value={filterYear} onChange={e=>setFY(e.target.value)}>
             {YEARS.map(y=><option key={y}>{y}</option>)}
           </select>
-          <div style={{marginLeft:'auto',fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>Collected: {fmtINR(total)}</div>
+          <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)',marginLeft:'auto',whiteSpace:'nowrap'}}>Collected: {fmtINR(total)}</div>
         </div>
         {notPaid.length>0 && (
           <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:13}}>
@@ -1570,12 +1596,12 @@ function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
             <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{prop.Address||prop.Type}</div>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:14}}>
+        <div className="prop-card-right" style={{display:'flex',alignItems:'center',gap:14}}>
           <div style={{textAlign:'right'}}>
             <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(prop['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
             <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
           </div>
-          <span className={`badge ${occColor}`}>{prop.Occupancy||'Occupied'}</span>
+          <span className={`badge ${occColor} prop-occ-badge-header`}>{prop.Occupancy||'Occupied'}</span>
           <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
         </div>
       </div>
