@@ -758,6 +758,7 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
   const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
   const tenant  = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
   const allTens = data.tenants.filter(t => t['Property ID'] === p.ID);
+  const lastPaidRent = data.rent.filter(r=>r['Property ID']===p.ID&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
   const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
   const occIcon  = p.Occupancy==='Vacant'?'🔓':p.Occupancy==='OwnUsage'?'🏡':p.Occupancy==='NotApplicable'?'📋':'🏠';
   return (
@@ -776,6 +777,9 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
           <div style={{textAlign:'right'}}>
             <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(p['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
             <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+            {lastPaidRent
+              ? <div style={{fontSize:11,marginTop:2}}>Last paid: <span style={{color:'var(--green)',fontWeight:600}}>{lastPaidRent.Month} {lastPaidRent.Year}</span></div>
+              : <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>No rent recorded</div>}
           </div>
           <span className={`badge ${occColor}`}>{p.Occupancy||'Occupied'}</span>
           <EditBtn onClick={e=>{e.stopPropagation();onEdit(p);}}/>
@@ -922,9 +926,10 @@ function Tenants({ data, onRefresh }) {
       <div className="card">
         {filtered.length===0 ? <div className="empty"><p>No {tab} tenants.</p></div> :
         <div className="table-wrap"><table>
-          <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Last Rent Revision</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Last Rent Revision</th><th>Last Rent Paid</th><th>Status</th><th></th></tr></thead>
           <tbody>{filtered.map(t => {
             const prop = data.properties.find(p => p.ID === t['Property ID']);
+            const lastPaidRent = data.rent.filter(r=>r['Property ID']===t['Property ID']&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
             return (<tr key={t.ID}>
               <td className="name">{t.Name}</td>
               <td>{prop?prop.Name:t['Property ID']}</td>
@@ -932,6 +937,7 @@ function Tenants({ data, onRefresh }) {
               <td className="mono">{fmtINR(t.Advance)}</td>
               <td style={{color:'var(--text-muted)'}}>{t['Move In Date']}</td>
               <td style={{color: t['Last Rent Revision'] ? 'var(--gold)' : 'var(--text-muted)'}}>{t['Last Rent Revision']||'—'}</td>
+              <td style={{color: lastPaidRent ? 'var(--green)' : 'var(--text-muted)',fontWeight: lastPaidRent?600:400}}>{lastPaidRent ? `${lastPaidRent.Month} ${lastPaidRent.Year}` : '—'}</td>
               <td><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></td>
               <td><EditBtn onClick={()=>openEdit(t)}/></td>
             </tr>);
@@ -1114,6 +1120,20 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
     if (!form['Property ID'] || form.selectedMonths.length===0 || !form.perMonthAmount) {
       alert('Select property, at least one month, and per-month amount.'); return;
     }
+    const _prop = data.properties.find(p=>p.ID===form['Property ID']);
+    const _rentAmt = Number(_prop?.['Rent Amount']||0);
+    if (_rentAmt > 0) {
+      for (const {month, year} of form.selectedMonths) {
+        const alreadyPaid = data.rent
+          .filter(r=>r['Property ID']===form['Property ID']&&r.Month===month&&String(r.Year)===String(year)&&(r.Status==='Paid'||r.Status==='Partial'))
+          .reduce((s,r)=>s+Number(r.Amount||0),0);
+        const remaining = _rentAmt - alreadyPaid;
+        if (Number(form.perMonthAmount) > remaining) {
+          alert(`Cannot exceed rent for ${month} ${year}.\nRent: ₹${_rentAmt.toLocaleString('en-IN')}\nAlready recorded: ₹${alreadyPaid.toLocaleString('en-IN')}\nMax you can add: ₹${Math.max(0,remaining).toLocaleString('en-IN')}`);
+          return;
+        }
+      }
+    }
     setSaving(true);
     try {
       const tenant = data.tenants.find(t => t['Property ID']===form['Property ID'] && t.Status==='Active');
@@ -1151,6 +1171,18 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
 
   const handleEditSave = async () => {
     if (!editForm['Property ID']||!editForm.Amount) { alert('Property and amount required.'); return; }
+    const _eProp = data.properties.find(p=>p.ID===editForm['Property ID']);
+    const _eRentAmt = Number(_eProp?.['Rent Amount']||0);
+    if (_eRentAmt > 0) {
+      const alreadyPaid = data.rent
+        .filter(r=>r['Property ID']===editForm['Property ID']&&r.Month===editForm.Month&&String(r.Year)===String(editForm.Year)&&r.ID!==mode.id&&(r.Status==='Paid'||r.Status==='Partial'))
+        .reduce((s,r)=>s+Number(r.Amount||0),0);
+      const remaining = _eRentAmt - alreadyPaid;
+      if (Number(editForm.Amount) > remaining) {
+        alert(`Cannot exceed rent for ${editForm.Month} ${editForm.Year}.\nRent: ₹${_eRentAmt.toLocaleString('en-IN')}\nOther entries: ₹${alreadyPaid.toLocaleString('en-IN')}\nMax allowed: ₹${Math.max(0,remaining).toLocaleString('en-IN')}`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const tenant = data.tenants.find(t=>t['Property ID']===editForm['Property ID']&&t.Status==='Active');
@@ -1250,25 +1282,58 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
               Select Month(s) * &nbsp;
               <span style={{fontWeight:400,color:'var(--text-muted)'}}>— tap multiple for bulk payment</span>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-              {[String(Number(curYear)-1), curYear].map(yr=>(
-                <div key={yr}>
-                  <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:600}}>{yr}</div>
-                  <div className="month-grid">
-                    {MONTHS.map(mo=>{
-                      const sel=form.selectedMonths.find(m=>m.month===mo&&m.year===yr);
-                      return <div key={mo} className={`month-chip ${sel?'selected':''}`} onClick={()=>toggleMonth(mo,yr)}>{mo.slice(0,3)}</div>;
-                    })}
-                  </div>
+            {(()=>{
+              const _gProp = data.properties.find(p=>p.ID===form['Property ID']);
+              const _gRent = Number(_gProp?.['Rent Amount']||0);
+              const _paidMap = {};
+              if (form['Property ID']) {
+                data.rent.filter(r=>r['Property ID']===form['Property ID']&&(r.Status==='Paid'||r.Status==='Partial'))
+                  .forEach(r=>{const k=`${r.Month}|${r.Year}`;_paidMap[k]=(_paidMap[k]||0)+Number(r.Amount||0);});
+              }
+              return <>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                  {[String(Number(curYear)-1), curYear].map(yr=>(
+                    <div key={yr}>
+                      <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:600}}>{yr}</div>
+                      <div className="month-grid">
+                        {MONTHS.map(mo=>{
+                          const sel=form.selectedMonths.find(m=>m.month===mo&&m.year===yr);
+                          const paid=_paidMap[`${mo}|${yr}`]||0;
+                          const isFull=_gRent>0&&paid>=_gRent;
+                          const isPartial=_gRent>0&&paid>0&&paid<_gRent;
+                          return <div key={mo}
+                            className={`month-chip ${sel?'selected':''}`}
+                            style={isFull?{opacity:.55,cursor:'not-allowed',background:'rgba(16,185,129,.12)',border:'1px solid var(--green)'}:isPartial?{border:'1px solid var(--gold)'}:{}}
+                            title={paid>0?`Paid: ₹${paid.toLocaleString('en-IN')}${_gRent?` | Remaining: ₹${Math.max(0,_gRent-paid).toLocaleString('en-IN')}`:''}`:''}
+                            onClick={()=>!isFull&&toggleMonth(mo,yr)}>
+                            <span>{mo.slice(0,3)}</span>
+                            {isPartial&&<span style={{display:'block',fontSize:8,lineHeight:1.2,color:'var(--gold)',marginTop:1}}>partial</span>}
+                            {isFull&&<span style={{display:'block',fontSize:8,lineHeight:1.2,color:'var(--green)',marginTop:1}}>✓ full</span>}
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {form.selectedMonths.length>0 && (
-              <div style={{marginTop:10,padding:'8px 14px',background:'var(--green-light)',borderRadius:6,fontSize:13,color:'var(--green)',fontWeight:500}}>
-                {form.selectedMonths.length} month{form.selectedMonths.length>1?'s':''} selected
-                {form.selectedMonths.length>1 && form.perMonthAmount ? ` — Total: ₹${(form.selectedMonths.length*Number(form.perMonthAmount)).toLocaleString('en-IN')}` : ''}
-              </div>
-            )}
+                {form.selectedMonths.length>0 && (()=>{
+                  const warnings = _gRent>0 ? form.selectedMonths.map(({month,year})=>{
+                    const paid=_paidMap[`${month}|${year}`]||0;
+                    return paid>0?{month,year,paid,remaining:_gRent-paid}:null;
+                  }).filter(Boolean) : [];
+                  return <>
+                    <div style={{marginTop:10,padding:'8px 14px',background:'var(--green-light)',borderRadius:6,fontSize:13,color:'var(--green)',fontWeight:500}}>
+                      {form.selectedMonths.length} month{form.selectedMonths.length>1?'s':''} selected
+                      {form.selectedMonths.length>1 && form.perMonthAmount ? ` — Total: ₹${(form.selectedMonths.length*Number(form.perMonthAmount)).toLocaleString('en-IN')}` : ''}
+                    </div>
+                    {warnings.map(w=>(
+                      <div key={`${w.month}|${w.year}`} style={{marginTop:6,padding:'6px 14px',background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',borderRadius:6,fontSize:12,color:'var(--gold)'}}>
+                        ⚠️ {w.month} {w.year}: ₹{w.paid.toLocaleString('en-IN')} already paid — ₹{Math.max(0,w.remaining).toLocaleString('en-IN')} remaining
+                      </div>
+                    ))}
+                  </>;
+                })()}
+              </>;
+            })()}
           </div>
 
           <div className="btn-row">
@@ -1296,7 +1361,19 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
             <div className="form-group"><label>Year</label>
               <select value={editForm.Year} onChange={e=>ef('Year',e.target.value)}>{YEARS.map(y=><option key={y}>{y}</option>)}</select>
             </div>
-            <div className="form-group"><label>Amount (₹) *</label><input type="number" value={editForm.Amount} onChange={e=>ef('Amount',e.target.value)}/></div>
+            <div className="form-group"><label>Amount (₹) *</label>
+              <input type="number" value={editForm.Amount} onChange={e=>ef('Amount',e.target.value)}/>
+              {editForm['Property ID'] && editForm.Month && editForm.Year && (()=>{
+                const _ep=data.properties.find(p=>p.ID===editForm['Property ID']);
+                const _er=Number(_ep?.['Rent Amount']||0);
+                if(!_er) return null;
+                const _oth=data.rent.filter(r=>r['Property ID']===editForm['Property ID']&&r.Month===editForm.Month&&String(r.Year)===String(editForm.Year)&&r.ID!==mode.id&&(r.Status==='Paid'||r.Status==='Partial')).reduce((s,r)=>s+Number(r.Amount||0),0);
+                const _rem=_er-_oth;
+                return <div style={{marginTop:5,fontSize:12,color:_oth>0?'var(--gold)':'var(--text-muted)'}}>
+                  Rent: ₹{_er.toLocaleString('en-IN')}{_oth>0?` | Other entries: ₹${_oth.toLocaleString('en-IN')} | Max: ₹${Math.max(0,_rem).toLocaleString('en-IN')}`:` | Max: ₹${_er.toLocaleString('en-IN')}`}
+                </div>;
+              })()}
+            </div>
             <div className="form-group"><label>Paid Date</label><input type="date" value={editForm['Paid Date']} onChange={e=>ef('Paid Date',e.target.value)}/></div>
             <div className="form-group"><label>Status</label>
               <select value={editForm.Status} onChange={e=>ef('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
@@ -1372,9 +1449,13 @@ function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
             <option value="">— Select a property —</option>
             {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
           </select>
-          {filterProp && <div style={{marginLeft:'auto',fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>
-            Total collected: {fmtINR(data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0))}
-          </div>}
+          {filterProp && (()=>{
+            const _lp = data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            return <div style={{marginLeft:'auto',display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+              {_lp && <div style={{fontSize:12,color:'var(--text-muted)'}}>Last paid: <span style={{color:'var(--gold)',fontWeight:600}}>{_lp.Month} {_lp.Year}</span></div>}
+              <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>Total collected: {fmtINR(data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0))}</div>
+            </div>;
+          })()}
         </div>
 
         {!filterProp && <div className="card"><div className="empty"><p>Select a property above to see its rent history.</p></div></div>}
