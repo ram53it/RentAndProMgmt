@@ -878,7 +878,24 @@ function Convert({ data, derived, onRefresh, onDone }) {
             {RESERVE_NAMES.map(n=><option key={n} value={n}>{n}{!isCash(n)?` (${fmtG(derived.balOf(n))})`:` (${fmtINR(derived.cashBal)})`}</option>)}
           </select>
         </div>
-        <div className="form-group"><label>Subtype</label><input placeholder="optional" value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}/></div>
+        <div className="form-group"><label>Subtype</label>
+          {(() => {
+            const opts = cash 
+              ? (derived.reserves.find(r => r.name === l.reserve)?.subtypes || [])
+              : data.stock
+                  .filter(b => b['Reserve Type'] === l.reserve)
+                  .map(b => b['Box Name'])
+                  .filter((val, idx, arr) => arr.indexOf(val) === idx && val);
+            return opts.length > 0 ? (
+              <select value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}>
+                <option value="">— select pocket / type —</option>
+                {opts.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            ) : (
+              <input placeholder="optional" value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}/>
+            );
+          })()}
+        </div>
         {cash ? (
           <div className="form-group"><label>Amount ₹</label><input type="number" value={l.value} onChange={e=>upd(l.key,{value:e.target.value})}/></div>
         ) : (<>
