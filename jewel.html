@@ -308,12 +308,24 @@ async function readSheet(sheetName) {
   const data = await sheetsRequest('GET', `/values/${sheetName}`);
   const rows = data.values || [];
   if (rows.length <= 1) return [];
-  const headers = rows[0];
-  return rows.slice(1).filter(row => row && row.some(c => c !== '')).map((row, i) => {
-    const obj = { _row: i + 2 };
-    headers.forEach((h, j) => { obj[h] = (row[j] !== undefined ? row[j] : ''); });
-    return obj;
+  const canonicalHeaders = HEADERS[sheetName] || [];
+  const actualHeaders = rows[0];
+  const headerMap = actualHeaders.map(h => {
+    if (typeof h !== 'string') return null;
+    const cleanActual = h.trim().toLowerCase();
+    return canonicalHeaders.find(ch => ch.toLowerCase() === cleanActual) || h;
   });
+  return rows.slice(1)
+    .map((row, i) => {
+      const obj = { _row: i + 2 };
+      headerMap.forEach((h, j) => {
+        if (h) {
+          obj[h] = (row[j] !== undefined ? row[j] : '');
+        }
+      });
+      return obj;
+    })
+    .filter(obj => canonicalHeaders.some(ch => obj[ch] !== ''));
 }
 
 async function appendRow(sheetName, values) {
