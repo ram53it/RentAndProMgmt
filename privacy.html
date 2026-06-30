@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Policy - Jewel Manager</title>
+  <meta name="description" content="Privacy Policy for Jewel Manager. Learn how we handle your Google Sheet data securely and locally." />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #14110a;
+      --navy-mid: #1c1810;
+      --navy-light: #2a2417;
+      --accent: #d4a017;
+      --accent-hover: #b8890f;
+      --text-primary: #f5f1e8;
+      --text-secondary: #b3a98f;
+      --text-muted: #7d7460;
+      --surface: #1c1810;
+      --border: #3d3420;
+      --radius: 12px;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--navy);
+      color: var(--text-primary);
+      line-height: 1.7;
+      padding: 40px 20px;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    header {
+      margin-bottom: 30px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 40px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 30px;
+      margin-bottom: 12px;
+      border-left: 3px solid var(--accent);
+      padding-left: 10px;
+    }
+    p, li {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+    ul {
+      margin-left: 20px;
+      margin-bottom: 16px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    .highlight-box {
+      background: var(--navy-light);
+      border: 1px dashed var(--accent);
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+    }
+    .highlight-box p {
+      margin-bottom: 0;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+    footer {
+      margin-top: 40px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      background: var(--accent);
+      color: var(--navy);
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      transition: background 0.15s;
+    }
+    .btn:hover {
+      background: var(--accent-hover);
+      text-decoration: none;
+      color: var(--navy);
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 24px;
+      }
+      h1 {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo" id="logo-icon">💎</div>
+      <h1 id="main-title">Privacy Policy</h1>
+      <div class="subtitle">Last Updated: June 30, 2026</div>
+    </header>
+
+    <main>
+      <p>Your privacy is of the utmost importance to us. This Privacy Policy describes how <strong>Jewel Manager</strong> ("we", "our", or "the application") handles, stores, and protects your information when you use our application to manage your jewellery inventory, reserves, and transactions.</p>
+
+      <div class="highlight-box">
+        <p>🔒 <strong>Zero Server Access:</strong> Jewel Manager is a fully serverless, browser-based client application. We do not operate any external database or backend servers. Your keys and data never leave your browser, except when communicating directly and securely with Google Sheets API.</p>
+      </div>
+
+      <h2>1. Information We Access and Collect</h2>
+      <p>To provide its core inventory and ledger features, Jewel Manager requires integration with your Google account. We access the following information:</p>
+      <ul>
+        <li><strong>Google OAuth Tokens:</strong> Temporary access tokens granted by you during sign-in to communicate securely with Google Sheets API.</li>
+        <li><strong>Google Spreadsheet Data:</strong> The application reads and writes data (stock boxes, reserves, transactions, ledger entries, lending records, and reminders) to a Google Spreadsheet that you specify.</li>
+        <li><strong>Configuration Settings:</strong> Your Spreadsheet ID, OAuth Client ID, and AI API Key (if provided).</li>
+      </ul>
+
+      <h2>2. How We Store and Protect Your Data</h2>
+      <p>Since we do not run backend databases, all storage is handled strictly on your side:</p>
+      <ul>
+        <li><strong>Local Encryption:</strong> Your Spreadsheet ID, Client ID, and AI API Key are encrypted on your local device using AES-256 (GCM) with a 4-digit PIN that you create. The encrypted payload is saved in your browser's local storage (<code>localStorage</code>).</li>
+        <li><strong>Security of your PIN:</strong> The encryption keys are derived using PBKDF2 with 100,000 iterations. The plaintext PIN is never saved in the browser.</li>
+        <li><strong>Google Sheets:</strong> Your actual business records are stored entirely within your personal Google Drive account in the designated Google Sheet.</li>
+      </ul>
+
+      <h2>3. Google User Data Policy Compliance</h2>
+      <p>Jewel Manager's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically:</p>
+      <ul>
+        <li>We only request permissions necessary to read and write your dedicated spreadsheet (<code>https://www.googleapis.com/auth/spreadsheets</code>).</li>
+        <li>We do not transfer, sell, or share your Google user data or spreadsheet contents with any third parties.</li>
+        <li>Your Google OAuth token is saved only in your browser session and is used solely to authenticate your requests directly to Google Sheets API.</li>
+      </ul>
+
+      <h2>4. Third-Party Services (AI API Keys)</h2>
+      <p>If you choose to use the optional "Ask AI" natural language helper feature, the application will send your query along with relevant segments of your local inventory data directly to either the Anthropic (Claude) or Google (Gemini) API depending on the API Key you provide. This data transfer goes directly from your browser to the AI service endpoint and is governed by their respective privacy policies.</p>
+
+      <h2>5. Managing and Deleting Your Data</h2>
+      <p>You have full control over your credentials and data at all times:</p>
+      <ul>
+        <li>You can revoke access to your Google Account at any time through your Google Security Settings.</li>
+        <li>You can clear all cached credentials and encrypted configurations from the browser instantly by going to <strong>Setup</strong> and clicking <strong>Clear Cache & Reset PIN</strong>.</li>
+        <li>Your spreadsheet data is stored in your personal Google Drive and can be deleted or backed up via standard Google Sheets tools.</li>
+      </ul>
+
+      <h2>6. Changes to This Privacy Policy</h2>
+      <p>We may update our Privacy Policy from time to time. Any changes will be posted on this page with the updated date at the top.</p>
+
+      <h2>7. Contact Us</h2>
+      <p>If you have any questions or feedback regarding this Privacy Policy or security configurations, you can contact the host or deployment administrator of your Jewel Manager installation.</p>
+    </main>
+
+    <footer>
+      <p>&copy; 2026 Jewel Manager. All rights reserved.</p>
+      <p><a href="terms.html">Terms and Conditions</a></p>
+    </footer>
+  </div>
+</body>
+</html>

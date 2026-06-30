@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Terms and Conditions - Jewel Manager</title>
+  <meta name="description" content="Terms and Conditions for using Jewel Manager." />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #14110a;
+      --navy-mid: #1c1810;
+      --navy-light: #2a2417;
+      --accent: #d4a017;
+      --accent-hover: #b8890f;
+      --text-primary: #f5f1e8;
+      --text-secondary: #b3a98f;
+      --text-muted: #7d7460;
+      --surface: #1c1810;
+      --border: #3d3420;
+      --radius: 12px;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--navy);
+      color: var(--text-primary);
+      line-height: 1.7;
+      padding: 40px 20px;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    header {
+      margin-bottom: 30px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 40px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 30px;
+      margin-bottom: 12px;
+      border-left: 3px solid var(--accent);
+      padding-left: 10px;
+    }
+    p, li {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+    ul {
+      margin-left: 20px;
+      margin-bottom: 16px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    footer {
+      margin-top: 40px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    a:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 24px;
+      }
+      h1 {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo" id="logo-icon">💎</div>
+      <h1 id="main-title">Terms and Conditions</h1>
+      <div class="subtitle">Last Updated: June 30, 2026</div>
+    </header>
+
+    <main>
+      <p>Please read these Terms and Conditions ("Terms") carefully before using the <strong>Jewel Manager</strong> web application ("the application"). By accessing or using the application, you agree to be bound by these Terms.</p>
+
+      <h2>1. Nature of the Application</h2>
+      <p>Jewel Manager is a fully serverless, client-side React application that runs entirely in your web browser. It facilitates management of jewellery inventory, ledgers, and transactions by reading and writing to a Google Spreadsheet hosted inside your own Google Account. We do not provide, operate, or maintain any backend databases, servers, or cloud storage for your data.</p>
+
+      <h2>2. User Responsibilities</h2>
+      <p>When using this application, you acknowledge and agree that:</p>
+      <ul>
+        <li><strong>Google Sheet Ownership:</strong> You are solely responsible for creating, backing up, and maintaining the Google Sheet connected to this application. Any accidental deletion of data, spreadsheet sheets, or columns is outside of our control.</li>
+        <li><strong>Credential Security:</strong> You are responsible for maintaining the confidentiality of the 4-digit PIN used to encrypt your credentials in your browser's local storage.</li>
+        <li><strong>API Usage:</strong> If you use the optional "Ask AI" feature, you are responsible for providing your own API key and complying with the respective terms of service of the AI providers (Anthropic or Google).</li>
+      </ul>
+
+      <h2>3. Intellectual Property</h2>
+      <p>The layout, design, scripts, and codebase of Jewel Manager are protected by copyright laws. You may host, run, and modify your local copy of the application for personal or internal family business purposes.</p>
+
+      <h2>4. Disclaimers & "As-Is" Warranty</h2>
+      <p>THE APPLICATION IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS, HOSTS, OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE APPLICATION OR THE USE OR OTHER DEALINGS IN THE APPLICATION.</p>
+
+      <h2>5. Limitation of Liability</h2>
+      <p>Since the application runs locally on your browser and communicates directly with Google Services, the authors and hosts of the application have no access to your credentials or business records. We are not liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, loss of data, profits, or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort arising in any way out of the use of this application.</p>
+
+      <h2>6. Termination</h2>
+      <p>You can terminate these Terms at any time by ceasing to use the application and clearing your browser cache/local storage (via the <strong>Clear Cache & Reset PIN</strong> option on the Setup page).</p>
+
+      <h2>7. Changes to the Terms</h2>
+      <p>We reserve the right to modify these Terms at any time. Any changes will be posted on this page with the updated date at the top. Continued use of the application following the posting of changes constitutes acceptance of those changes.</p>
+    </main>
+
+    <footer>
+      <p>&copy; 2026 Jewel Manager. All rights reserved.</p>
+      <p><a href="privacy.html">Privacy Policy</a></p>
+    </footer>
+  </div>
+</body>
+</html>
