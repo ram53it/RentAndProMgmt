@@ -265,15 +265,27 @@ const setRuntimeConfig = (cfg) => { _runtimeConfig = cfg; };
 
 // ── GOOGLE SHEETS API ─────────────────────────────────────────────────────────
 const HEADERS = {
-  Stock:        ['ID','Box Name','Metal','Description','Location','Pieces','Gross Weight Grams','Weight Grams','Status','Notes','Created'],
-  Transactions: ['ID','Date','Customer','Phone','Sale Value','Old Value','Cash In','UPI In','Cash Out','UPI Out','Balance Due','Status','Notes'],
-  TxnItems:     ['ID','Txn ID','Source','Box ID','Description','Metal','Pieces','Weight Grams','Rate','Amount','Direction'],
-  Lending:      ['ID','Date','Person','Phone','Type','Mode','Weight Grams','Amount','Interest %','Due Date','Status','Notes'],
-  Payments:     ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
-  Ledger:       ['ID','Date','Direction','Mode','Amount','Category','Ref ID','Notes'],
-  Refills:      ['ID','Date','Metal','Weight Grams','Cost','Paid Mode','Notes'],
-  Movements:    ['ID','Date','From','To','Metal','Description','Pieces','Weight Grams','Notes'],
+  Stock:     ['ID','Box Name','Metal','Description','Location','Pieces','Gross Weight Grams','Weight Grams','Status','Notes','Created','Reserve Type'],
+  Reserves:  ['Reserve','Kind','Unit','Opening Balance','Subtypes','Notes'],
+  Entries:   ['ID','Txn ID','Date','Reserve','Subtype','Direction','Qty','Weight Grams','Touch','Margin','Value','Counterparty','Category','Ref','Notes'],
+  Lending:   ['ID','Date','Person','Phone','Type','Reserve','Weight Grams','Amount','Interest %','Interest Type','Due Date','Status','Notes'],
+  Payments:  ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
+  Reminders: ['ID','Created','Due Date','Title','Linked Type','Linked ID','Status','Notes'],
 };
+
+// The six reserves. Kind drives unit (grams vs ₹) and the combined gold/silver views.
+const RESERVES = [
+  { name: 'Cash',        kind: 'Cash',   unit: '₹',    emoji: '💵' },
+  { name: 'Ornaments',   kind: 'Gold',   unit: 'g',    emoji: '💍' },
+  { name: 'Gold Metal',  kind: 'Gold',   unit: 'g',    emoji: '🥇' },
+  { name: 'Old Gold',    kind: 'Gold',   unit: 'g',    emoji: '🟡' },
+  { name: 'Silver',      kind: 'Silver', unit: 'g',    emoji: '🥈' },
+  { name: 'Old Silver',  kind: 'Silver', unit: 'g',    emoji: '⚪' },
+];
+const RESERVE_NAMES = RESERVES.map(r => r.name);
+const reserveKind = (name) => (RESERVES.find(r => r.name === name) || {}).kind || 'Gold';
+const isCash = (name) => name === 'Cash';
+const fmtReserve = (name, qty) => isCash(name) ? fmtINR(qty) : fmtG(qty);
 
 async function sheetsRequest(method, path, body = null) {
   const cfg = getConfig();
@@ -338,6 +350,14 @@ async function initSheets() {
       }
     } catch(e) { console.warn('initSheets header for', sheet, e.message); }
   }
+  // Seed the 6 reserve definitions once (only if Reserves has just the header row)
+  try {
+    const r = await sheetsRequest('GET', '/values/Reserves!A2:A2');
+    if (!r.values || r.values.length === 0) {
+      const rows = RESERVES.map(rs => [rs.name, rs.kind, rs.unit, 0, '', '']);
+      await sheetsRequest('POST', '/values/Reserves!A1:append?valueInputOption=USER_ENTERED', { values: rows });
+    }
+  } catch(e) { console.warn('initSheets seed Reserves:', e.message); }
 }
 
 // ── GOOGLE AUTH ───────────────────────────────────────────────────────────────
@@ -371,62 +391,68 @@ const todayStr = () => new Date().toISOString().slice(0,10);
 const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
 
-// Append a ledger entry — every cash/account movement goes through here
-async function addLedger(date, direction, mode, amount, category, refId, notes) {
-  if (num(amount) <= 0) return;
-  await appendRow('Ledger', [uid('L'), date, direction, mode, num(amount), category, refId||'', notes||'']);
+// Gold/silver weight conversion: direct gram override wins, else weight × (touch+margin)/100
+function qtyFromGold(weight, touch, margin, direct) {
+  if (direct !== '' && direct !== undefined && direct !== null) return Math.round(num(direct)*1000)/1000;
+  return Math.round(num(weight) * (num(touch) + num(margin)) / 100 * 1000) / 1000;
+}
+
+// Append one reserve-ledger entry — every reserve movement goes through here.
+// leg = { reserve, subtype, direction:'In'|'Out', qty, weight, touch, margin, value, counterparty, category, ref, notes }
+async function addEntry(txnId, date, leg) {
+  if (num(leg.qty) <= 0 && num(leg.value) <= 0) return;
+  await appendRow('Entries', [
+    uid('E'), txnId, date, leg.reserve, leg.subtype||'', leg.direction, num(leg.qty),
+    leg.weight!==undefined?leg.weight:'', leg.touch!==undefined?leg.touch:'', leg.margin!==undefined?leg.margin:'',
+    leg.value!==undefined?num(leg.value):'', leg.counterparty||'', leg.category||'', leg.ref||'', leg.notes||'',
+  ]);
 }
 
 // ── DERIVED TOTALS — computed fresh from sheets every load ───────────────────
-function computeDerived(data) {
-  let cashIn=0, cashOut=0, acctIn=0, acctOut=0;
-  data.ledger.forEach(l => {
-    const amt = num(l.Amount);
-    const isCash = l.Mode === 'Cash';
-    if (l.Direction === 'In') { isCash ? cashIn += amt : acctIn += amt; }
-    else { isCash ? cashOut += amt : acctOut += amt; }
-  });
-
-  let goldBoxG=0, silverBoxG=0, goldBoxes=0, silverBoxes=0;
+function computeReserves(data) {
+  // Opening balance per reserve: metals from tagged Stock rows + manual top-up; Cash from Reserves sheet.
+  const stockOpening = {};
+  RESERVE_NAMES.forEach(n => stockOpening[n] = 0);
   data.stock.forEach(b => {
-    const w = num(b['Weight Grams']);
-    if (b.Metal === 'Silver') { silverBoxG += w; if (w>0) silverBoxes++; }
-    else { goldBoxG += w; if (w>0) goldBoxes++; }
+    const rt = (b['Reserve Type']||'').trim();
+    if (RESERVE_NAMES.includes(rt)) stockOpening[rt] += num(b['Weight Grams']);
   });
 
-  // Old-metal pool: refills + old jewel received − pool metal given out − metal lent + metal repaid ± manual moves
-  let goldPool=0, silverPool=0;
-  const poolAdd = (metal, g) => { metal === 'Silver' ? silverPool += g : goldPool += g; };
-  data.refills.forEach(r => poolAdd(r.Metal, num(r['Weight Grams'])));
-  data.txnItems.forEach(it => {
-    if (it.Source !== 'Pool') return;
-    poolAdd(it.Metal, (it.Direction === 'In' ? 1 : -1) * num(it['Weight Grams']));
-  });
-  data.lending.forEach(l => {
-    if (l.Type === 'Gold' || l.Type === 'Silver') poolAdd(l.Type, -num(l['Weight Grams']));
-  });
-  data.payments.forEach(p => {
-    if (p.Mode === 'Gold' || p.Mode === 'Silver') poolAdd(p.Mode, num(p['Weight Grams']));
-  });
-  data.movements.forEach(m => {
-    const w = num(m['Weight Grams']);
-    if (m.From === 'Old Gold Pool') goldPool -= w;
-    if (m.From === 'Old Silver Pool') silverPool -= w;
-    if (m.To === 'Old Gold Pool') goldPool += w;
-    if (m.To === 'Old Silver Pool') silverPool += w;
+  const manualOpening = {};
+  RESERVE_NAMES.forEach(n => manualOpening[n] = 0);
+  data.reserves.forEach(r => { if (RESERVE_NAMES.includes(r.Reserve)) manualOpening[r.Reserve] = num(r['Opening Balance']); });
+
+  // Subtypes config per reserve
+  const subtypes = {};
+  data.reserves.forEach(r => { if (RESERVE_NAMES.includes(r.Reserve)) subtypes[r.Reserve] = (r.Subtypes||'').split(',').map(s=>s.trim()).filter(Boolean); });
+
+  // Movement totals from Entries
+  const moved = {};
+  RESERVE_NAMES.forEach(n => moved[n] = 0);
+  data.entries.forEach(e => {
+    if (!RESERVE_NAMES.includes(e.Reserve)) return;
+    moved[e.Reserve] += (e.Direction === 'In' ? 1 : -1) * num(e.Qty);
   });
 
-  // Outstanding balances
+  const reserves = RESERVES.map(rs => {
+    const opening = (rs.kind === 'Cash' ? 0 : stockOpening[rs.name]) + manualOpening[rs.name];
+    const balance = Math.round((opening + moved[rs.name]) * 1000) / 1000;
+    return { ...rs, opening, stockOpening: stockOpening[rs.name], manualOpening: manualOpening[rs.name],
+             moved: moved[rs.name], balance, subtypes: subtypes[rs.name] || [], _row: (data.reserves.find(r=>r.Reserve===rs.name)||{})._row };
+  });
+  const balOf = (name) => (reserves.find(r => r.name === name) || {}).balance || 0;
+
+  const goldTotal   = balOf('Ornaments') + balOf('Gold Metal') + balOf('Old Gold');
+  const silverTotal = balOf('Silver') + balOf('Old Silver');
+  const cashBal     = balOf('Cash');
+
+  // Lending outstanding — simple interest per month on principal until Closed
   const paidFor = (refType, refId) => data.payments
     .filter(p => p['Ref Type'] === refType && p['Ref ID'] === refId)
     .reduce((s,p) => s + num(p.Amount), 0);
-
-  const txnOutstanding = data.transactions.map(t => ({ ...t, outstanding: num(t['Balance Due']) - paidFor('Transaction', t.ID) }));
-
-  // Simple interest on principal, per month, from lending date until today (stops once Closed)
   const interestFor = (l) => {
     const rate = num(l['Interest %']);
-    if (!rate || !l.Date) return 0;
+    if (!rate || (l['Interest Type']==='None') || !l.Date) return 0;
     const days = Math.max(0, (Date.now() - new Date(l.Date).getTime()) / 86400000);
     return Math.round(num(l.Amount) * (rate/100) * (days/30));
   };
@@ -436,20 +462,13 @@ function computeDerived(data) {
     const paid = paidFor('Lending', l.ID);
     return { ...l, interest, paid, outstanding: closed ? 0 : num(l.Amount) + interest - paid };
   });
+  const lendingDue = lendOutstanding.filter(l => l.outstanding > 0.5).reduce((s,l) => s + l.outstanding, 0);
 
-  const customerDue = txnOutstanding.filter(t => t.outstanding > 0).reduce((s,t) => s + t.outstanding, 0);
-  const weOwe       = txnOutstanding.filter(t => t.outstanding < 0).reduce((s,t) => s - t.outstanding, 0);
-  const lendingDue  = lendOutstanding.filter(l => l.outstanding > 0).reduce((s,l) => s + l.outstanding, 0);
+  // Reminders
+  const openReminders = data.reminders.filter(r => (r.Status||'Open') !== 'Closed')
+    .sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
 
-  return {
-    cashInHand: cashIn - cashOut,
-    accountBal: acctIn - acctOut,
-    goldBoxG, silverBoxG, goldBoxes, silverBoxes,
-    goldPool, silverPool,
-    txnOutstanding, lendOutstanding,
-    customerDue, weOwe, lendingDue,
-    paidFor,
-  };
+  return { reserves, balOf, goldTotal, silverTotal, cashBal, lendOutstanding, lendingDue, openReminders, paidFor };
 }
 
 // ── SMART DATA FILTER — send only what the query needs ───────────────────────
@@ -457,15 +476,12 @@ function filterDataForQuery(question, data, derived) {
   const q = question.toLowerCase();
 
   const summary = {
-    cashInHand: derived.cashInHand,
-    accountBalance: derived.accountBal,
-    goldInBoxesGrams: derived.goldBoxG,
-    silverInBoxesGrams: derived.silverBoxG,
-    oldGoldPoolGrams: derived.goldPool,
-    oldSilverPoolGrams: derived.silverPool,
-    customersOweUs: derived.customerDue,
-    weOweCustomers: derived.weOwe,
+    reserves: derived.reserves.map(r => ({ reserve: r.name, unit: r.unit, balance: r.balance, opening: r.opening })),
+    goldTotalGrams: derived.goldTotal,
+    silverTotalGrams: derived.silverTotal,
+    cashBalance: derived.cashBal,
     lendingOutstanding: derived.lendingDue,
+    openReminders: derived.openReminders.length,
   };
 
   const slim = (arr, fields) => arr.map(row => {
@@ -474,34 +490,28 @@ function filterDataForQuery(question, data, derived) {
     return obj;
   });
 
-  const needsStock   = q.match(/stock|box|pocket|container|weight|gram|gold|silver|ornament|item|jewel|move|moved|shift|location|place|locker/);
-  const needsTxn     = q.match(/sale|sold|sell|buy|bought|purchase|customer|transaction|balance|due|exchange|old/);
-  const needsLending = q.match(/lend|loan|borrow|gave|given|owe|return|help|installment|interest/);
-  const needsLedger  = q.match(/cash|account|upi|ledger|money|spent|expense|hand|received|paid/);
+  const needsStock     = q.match(/stock|box|pocket|container|location|place|locker|inside|ornament|piece/);
+  const needsEntries   = q.match(/sale|sold|sell|buy|bought|convert|conversion|transaction|move|moved|entry|entries|touch|expense|spent|history|reserve|gold|silver|cash|metal/);
+  const needsLending   = q.match(/lend|loan|borrow|gave|given|owe|return|help|installment|interest/);
+  const needsReminders = q.match(/remind|reminder|due|pending|follow|close/);
 
   const result = { summary };
-  if (needsStock || (!needsTxn && !needsLending && !needsLedger)) {
-    result.stockBoxes = slim(data.stock, ['ID','Box Name','Metal','Description','Location','Pieces','Gross Weight Grams','Weight Grams','Status']);
-    result.refills = slim(data.refills, ['Date','Metal','Weight Grams','Cost']);
-    result.itemMovements = slim(data.movements.slice(-100), ['Date','From','To','Metal','Description','Pieces','Weight Grams','Notes']);
+  if (needsStock) {
+    result.stockBoxes = slim(data.stock, ['Box Name','Metal','Description','Location','Pieces','Weight Grams','Reserve Type']);
   }
-  if (needsTxn) {
-    result.transactions = derived.txnOutstanding.slice(-100).map(t => ({
-      ID:t.ID, Date:t.Date, Customer:t.Customer, Phone:t.Phone, SaleValue:t['Sale Value'], OldValue:t['Old Value'],
-      CashIn:t['Cash In'], UPIIn:t['UPI In'], CashOut:t['Cash Out'], UPIOut:t['UPI Out'], Outstanding:t.outstanding, Status:t.Status,
-    }));
-    result.transactionItems = slim(data.txnItems.slice(-200), ['Txn ID','Source','Description','Metal','Pieces','Weight Grams','Rate','Amount','Direction']);
+  if (needsEntries || (!needsStock && !needsLending && !needsReminders)) {
+    result.recentEntries = slim(data.entries.slice(-150), ['Date','Reserve','Subtype','Direction','Qty','Weight Grams','Touch','Margin','Value','Counterparty','Category','Notes']);
   }
   if (needsLending) {
     result.lending = derived.lendOutstanding.map(l => ({
-      ID:l.ID, Date:l.Date, Person:l.Person, Phone:l.Phone, Type:l.Type, WeightGrams:l['Weight Grams'],
+      Date:l.Date, Person:l.Person, Phone:l.Phone, Type:l.Type, FromReserve:l.Reserve, WeightGrams:l['Weight Grams'],
       Principal:l.Amount, InterestPctPerMonth:l['Interest %'], InterestAccrued:l.interest,
       DueDate:l['Due Date'], Outstanding:l.outstanding, Status:l.Status,
     }));
     result.repayments = slim(data.payments.filter(p=>p['Ref Type']==='Lending'), ['Date','Ref ID','Person','Mode','Amount','Weight Grams']);
   }
-  if (needsLedger) {
-    result.ledgerRecent = slim(data.ledger.slice(-150), ['Date','Direction','Mode','Amount','Category','Notes']);
+  if (needsReminders) {
+    result.openReminders = slim(derived.openReminders, ['Due Date','Title','Linked Type','Notes']);
   }
   return result;
 }
@@ -516,11 +526,12 @@ async function askAI(question, data, derived) {
   const now = new Date();
 
   const context = `You are an assistant for a small family jewellery business in India. Answer concisely using only the data provided.
-Amounts are in ₹ (INR), weights in grams. "Pool" means loose old gold/silver received from customers (not in boxes).
-Stock is kept in boxes/pockets (each has a Location = where it is kept). Item movements between boxes/pool/places are logged in itemMovements.
-Transactions can mix selling ornaments, receiving old jewel, and cash/UPI settlement.
-Positive Outstanding on a transaction = customer still owes us; negative = we owe the customer.
-Lending = gold or cash given to help someone, repaid in installments. Some lending carries simple interest (% per month on principal); InterestAccrued is computed till today and Outstanding = Principal + InterestAccrued − repaid.
+Money is in ₹ (INR); metal balances are in grams. The business tracks six "reserves" (accounts), each with an opening balance and a running balance:
+Cash (₹), Ornaments, Gold Metal, Old Gold (all gold, grams), Silver, Old Silver (silver, grams).
+goldTotalGrams = Ornaments + Gold Metal + Old Gold. silverTotalGrams = Silver + Old Silver.
+Every transaction is a conversion that moves quantity between reserves, recorded as Entries (Direction In/Out, Qty in the reserve's unit). Gold legs may use a touch formula: Qty grams = weight × (touch + margin) / 100.
+Lending = cash or metal given to help someone, repaid in installments; simple interest (% per month) may apply. Outstanding = Principal + InterestAccrued − repaid.
+Reminders track follow-ups with a due date that must be closed.
 Today: ${now.toLocaleDateString('en-IN')}.
 
 DATA:
@@ -566,6 +577,9 @@ const Icon = ({ name, size = 16 }) => {
     plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
     send: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
     check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polyline points="20 6 9 17 4 12"/></svg>,
+    layers: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+    bell: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
+    minus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   };
   return icons[name] || null;
 };
@@ -583,62 +597,66 @@ function CollapsibleSection({ title, defaultOpen=false, children }) {
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dashboard({ data, derived, onNav }) {
+function Dashboard({ data, derived, onNav, onRefresh }) {
   const d = derived;
-  const recentTxns = [...data.transactions].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'')).slice(0,8);
-  const pendingTxns = d.txnOutstanding.filter(t => Math.abs(t.outstanding) > 0.5);
-  const openLends = d.lendOutstanding.filter(l => l.outstanding > 0.5);
+  const [closing, setClosing] = useState('');
+  const openLends = d.lendOutstanding.filter(l => l.outstanding > 0.5).sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
+  const recentEntries = [...data.entries].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||'')).slice(0,10);
+
+  const closeReminder = async (r) => {
+    setClosing(r.ID);
+    try { await updateRow('Reminders', r._row, rowValues('Reminders', { ...r, Status:'Closed' })); onRefresh(); }
+    catch(e) { alert('Error: '+e.message); }
+    setClosing('');
+  };
 
   return (
     <div>
       <div className="stats-row">
-        <div className="stat-card"><div className="stat-label">💵 Cash in Hand</div><div className={`stat-value ${d.cashInHand>=0?'green':'red'}`}>{fmtINR(d.cashInHand)}</div><div className="stat-sub">From ledger</div></div>
-        <div className="stat-card"><div className="stat-label">🏦 Account / UPI</div><div className={`stat-value ${d.accountBal>=0?'green':'red'}`}>{fmtINR(d.accountBal)}</div><div className="stat-sub">From ledger</div></div>
-        <div className="stat-card"><div className="stat-label">🥇 Gold Stock</div><div className="stat-value gold">{fmtG(d.goldBoxG + d.goldPool)}</div><div className="stat-sub">{fmtG(d.goldBoxG)} in boxes + {fmtG(d.goldPool)} old/loose</div></div>
-        <div className="stat-card"><div className="stat-label">🥈 Silver Stock</div><div className="stat-value silver">{fmtG(d.silverBoxG + d.silverPool)}</div><div className="stat-sub">{fmtG(d.silverBoxG)} in boxes + {fmtG(d.silverPool)} old/loose</div></div>
-        <div className="stat-card"><div className="stat-label">⏳ Customers Owe</div><div className="stat-value" style={{color:d.customerDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.customerDue)}</div><div className="stat-sub">{d.weOwe>0?`We owe ${fmtINR(d.weOwe)}`:'Balance due to us'}</div></div>
-        <div className="stat-card"><div className="stat-label">🤝 Lending Out</div><div className="stat-value" style={{color:d.lendingDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.lendingDue)}</div><div className="stat-sub">{openLends.length} open</div></div>
+        <div className="stat-card"><div className="stat-label">💵 Cash</div><div className={`stat-value ${d.cashBal>=0?'green':'red'}`}>{fmtINR(d.cashBal)}</div><div className="stat-sub">In hand + account</div></div>
+        <div className="stat-card"><div className="stat-label">🥇 Gold Reserve</div><div className="stat-value gold">{fmtG(d.goldTotal)}</div><div className="stat-sub">Ornaments + Metal + Old Gold</div></div>
+        <div className="stat-card"><div className="stat-label">🥈 Silver Reserve</div><div className="stat-value silver">{fmtG(d.silverTotal)}</div><div className="stat-sub">Silver + Old Silver</div></div>
+        <div className="stat-card"><div className="stat-label">🤝 Lending Out</div><div className="stat-value" style={{color:d.lendingDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.lendingDue)}</div><div className="stat-sub">{openLends.length} open · incl. interest</div></div>
+        <div className="stat-card"><div className="stat-label">🔔 Open Reminders</div><div className="stat-value" style={{color:d.openReminders.length>0?'var(--gold)':'var(--green)'}}>{d.openReminders.length}</div><div className="stat-sub">To follow up & close</div></div>
+      </div>
+
+      <div className="card" style={{marginBottom:16}}>
+        <div className="section-row" style={{marginBottom:12}}>
+          <div className="card-title" style={{marginBottom:0}}>Reserve Balances</div>
+          <button className="btn btn-primary btn-sm" onClick={()=>onNav('convert')}><Icon name="exchange" size={12}/> New Transaction</button>
+        </div>
+        <div className="stats-row" style={{marginBottom:0}}>
+          {d.reserves.map(r => (
+            <div className="stat-card" key={r.name} style={{cursor:'pointer'}} onClick={()=>onNav('reserves')}>
+              <div className="stat-label">{r.emoji} {r.name}</div>
+              <div className={`stat-value ${r.kind==='Silver'?'silver':r.kind==='Cash'?'green':'gold'}`} style={{fontSize:18}}>{fmtReserve(r.name, r.balance)}</div>
+              <div className="stat-sub">opening {fmtReserve(r.name, r.opening)}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="two-col">
-        <div className="card">
-          <div className="section-row" style={{marginBottom:12}}>
-            <div className="card-title" style={{marginBottom:0}}>Recent Transactions</div>
-            <button className="btn btn-primary btn-sm" onClick={()=>onNav('newtxn')}><Icon name="plus" size={12}/> New Transaction</button>
-          </div>
-          {recentTxns.length === 0 ? <div className="empty"><p>No transactions yet.</p></div> :
-          <div className="table-wrap"><table>
-            <thead><tr><th>Date</th><th>Customer</th><th>Sale</th><th>Old</th><th>Status</th></tr></thead>
-            <tbody>{recentTxns.map(t => {
-              const out = d.txnOutstanding.find(x=>x.ID===t.ID)?.outstanding || 0;
-              return (<tr key={t.ID}>
-                <td className="mono">{t.Date}</td>
-                <td className="name">{t.Customer}</td>
-                <td className="mono">{fmtINR(t['Sale Value'])}</td>
-                <td className="mono">{fmtINR(t['Old Value'])}</td>
-                <td><span className={`badge ${Math.abs(out)<.5?'badge-green':out>0?'badge-gold':'badge-red'}`}>{Math.abs(out)<.5?'Settled':out>0?`Due ${fmtINR(out)}`:`We owe ${fmtINR(-out)}`}</span></td>
-              </tr>);
-            })}</tbody>
-          </table></div>}
-        </div>
-
         <div>
           <div className="card">
-            <div className="card-title">Pending Balances</div>
-            {pendingTxns.length === 0 ? <div className="empty"><p>All transactions settled ✓</p></div> :
-            <div className="table-wrap"><table>
-              <thead><tr><th>Customer</th><th>Date</th><th>Outstanding</th></tr></thead>
-              <tbody>{pendingTxns.map(t => (
-                <tr key={t.ID}><td className="name">{t.Customer}</td><td className="mono">{t.Date}</td>
-                  <td className="mono" style={{color:t.outstanding>0?'var(--gold)':'var(--red)'}}>{t.outstanding>0?fmtINR(t.outstanding):`−${fmtINR(-t.outstanding)} (we owe)`}</td></tr>
-              ))}</tbody>
-            </table></div>}
+            <div className="card-title">🔔 Open Reminders</div>
+            {d.openReminders.length === 0 ? <div className="empty"><p>No open reminders ✓</p></div> :
+            <div className="gap-12">{d.openReminders.map(r => {
+              const overdue = r['Due Date'] && r['Due Date'] < todayStr();
+              return (<div key={r.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--navy)',borderRadius:8,border:`1px solid ${overdue?'rgba(239,68,68,.3)':'var(--border)'}`}}>
+                <div>
+                  <div style={{fontWeight:500,fontSize:13}}>{r.Title}</div>
+                  <div style={{fontSize:11,color:overdue?'var(--red)':'var(--text-muted)',marginTop:2}}>{r['Due Date']?`Due ${r['Due Date']}`:'No date'}{r['Linked Type']&&r['Linked Type']!=='Standalone'?` · ${r['Linked Type']}`:''}{r.Notes?` · ${r.Notes}`:''}</div>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={()=>closeReminder(r)} disabled={closing===r.ID}>{closing===r.ID?<span className="spinner"/>:'✓ Close'}</button>
+              </div>);
+            })}</div>}
           </div>
           <div className="card">
             <div className="card-title">Open Lending</div>
             {openLends.length === 0 ? <div className="empty"><p>Nothing lent out ✓</p></div> :
             <div className="table-wrap"><table>
-              <thead><tr><th>Person</th><th>Given</th><th>To Return</th></tr></thead>
+              <thead><tr><th>Person</th><th>Given</th><th>To Collect</th></tr></thead>
               <tbody>{openLends.map(l => (
                 <tr key={l.ID}><td className="name">{l.Person}</td>
                   <td>{l.Type==='Cash'?fmtINR(l.Amount):`${l.Type} ${fmtG(l['Weight Grams'])}`}</td>
@@ -647,36 +665,47 @@ function Dashboard({ data, derived, onNav }) {
             </table></div>}
           </div>
         </div>
+
+        <div className="card">
+          <div className="section-row" style={{marginBottom:12}}>
+            <div className="card-title" style={{marginBottom:0}}>Recent Activity</div>
+            <button className="btn btn-secondary btn-sm" onClick={()=>onNav('reserves')}>View ledger →</button>
+          </div>
+          {recentEntries.length === 0 ? <div className="empty"><p>No transactions yet.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Date</th><th>Reserve</th><th>Dir</th><th>Qty</th><th>Note</th></tr></thead>
+            <tbody>{recentEntries.map(e => (
+              <tr key={e.ID}>
+                <td className="mono">{e.Date}</td>
+                <td className="name">{e.Reserve}</td>
+                <td><span className={`badge ${e.Direction==='In'?'badge-green':'badge-red'}`}>{e.Direction==='In'?'↓':'↑'}</span></td>
+                <td className="mono">{fmtReserve(e.Reserve, e.Qty)}</td>
+                <td style={{fontSize:12}}>{e.Category||e.Counterparty||e.Notes||'—'}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── STOCK (boxes + pool + refill + movements) ────────────────────────────────
+// ── STOCK (boxes — the physical opening inventory, tagged to reserves) ────────
 function Stock({ data, derived, onRefresh }) {
-  const [tab, setTab] = useState('boxes'); // boxes | movements
   const [mode, setMode] = useState(null); // null | 'add' | {editing}
   const [saving, setSaving] = useState(false);
-  const [showRefill, setShowRefill] = useState(false);
-  const [showMove, setShowMove] = useState(false);
-  const [histFor, setHistFor] = useState(null); // box ID whose history is expanded
-  const blank = { ID:'', 'Box Name':'', Metal:'Gold', Description:'', Location:'', Pieces:'', 'Gross Weight Grams':'', 'Weight Grams':'', Status:'In Stock', Notes:'' };
+  const blank = { ID:'', 'Box Name':'', Metal:'Gold', Description:'', Location:'', Pieces:'', 'Gross Weight Grams':'', 'Weight Grams':'', Status:'In Stock', Notes:'', 'Reserve Type':'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p => ({...p,[k]:v}));
-
-  const refillBlank = { Date: todayStr(), Metal:'Gold', weight:'', cost:'', mode:'None', notes:'' };
-  const [refill, setRefill] = useState(refillBlank);
-  const rf = (k,v) => setRefill(p => ({...p,[k]:v}));
-
-  const moveBlank = { date: todayStr(), from:'', to:'', metal:'Gold', desc:'', pieces:'', weight:'', otherFrom:'', otherTo:'', notes:'' };
-  const [move, setMove] = useState(moveBlank);
-  const mv = (k,v) => setMove(p => ({...p,[k]:v}));
 
   const openAdd = () => { setForm(blank); setMode('add'); };
   const openEdit = (b) => { setForm({...blank, ...b}); setMode({ editing: b._row, created: b.Created }); };
 
+  // Reserve-type options matching the box metal
+  const rtOptions = (metal) => metal==='Silver' ? ['Silver','Old Silver'] : ['Ornaments','Gold Metal','Old Gold'];
+
   const handleSave = async () => {
-    if (!form['Box Name'] || form['Weight Grams']==='') { alert('Box name and weight are required.'); return; }
+    if (!form['Box Name'] || form['Weight Grams']==='') { alert('Box name and net weight are required.'); return; }
     setSaving(true);
     try {
       const status = num(form['Weight Grams'])>0?'In Stock':'Empty';
@@ -690,156 +719,48 @@ function Stock({ data, derived, onRefresh }) {
     setSaving(false);
   };
 
-  // Resolve a move endpoint key into { label, box }
-  const endpoint = (key, otherText) => {
-    if (key === 'poolG') return { label: 'Old Gold Pool', metal: 'Gold' };
-    if (key === 'poolS') return { label: 'Old Silver Pool', metal: 'Silver' };
-    if (key === 'other') return { label: otherText.trim() || 'Other place' };
-    const box = data.stock.find(b => b.ID === key);
-    return box ? { label: box['Box Name'], metal: box.Metal, box } : null;
-  };
-
-  const handleMove = async () => {
-    if (!move.from || !move.to) { alert('Pick both From and To.'); return; }
-    if (move.from === move.to) { alert('From and To cannot be the same.'); return; }
-    if (num(move.weight) <= 0) { alert('Enter the weight moved.'); return; }
-    const from = endpoint(move.from, move.otherFrom);
-    const to = endpoint(move.to, move.otherTo);
-    if (!from || !to) { alert('Pick valid From and To.'); return; }
-    const metal = from.metal || to.metal || move.metal;
-    if (from.metal && to.metal && from.metal !== to.metal) { alert(`Metal mismatch: "${from.label}" is ${from.metal} but "${to.label}" is ${to.metal}.`); return; }
-    if (from.box && num(move.weight) > num(from.box['Weight Grams']) + 0.0001) { alert(`"${from.label}" has only ${from.box['Weight Grams']} g.`); return; }
-    if (move.from === 'poolG' && num(move.weight) > derived.goldPool + 0.0001) { alert(`Old gold pool has only ${derived.goldPool} g.`); return; }
-    if (move.from === 'poolS' && num(move.weight) > derived.silverPool + 0.0001) { alert(`Old silver pool has only ${derived.silverPool} g.`); return; }
-    setSaving(true);
-    try {
-      await appendRow('Movements', [uid('M'), move.date, from.label, to.label, metal, move.desc, move.pieces, num(move.weight), move.notes]);
-      const adjustBox = async (box, sign) => {
-        const newW = Math.round((num(box['Weight Grams']) + sign*num(move.weight))*1000)/1000;
-        const newP = box.Pieces!=='' && move.pieces!=='' ? Math.max(0, num(box.Pieces) + sign*num(move.pieces)) : box.Pieces;
-        await updateRow('Stock', box._row, rowValues('Stock', { ...box, Pieces:newP, 'Weight Grams':newW, Status:newW>0?'In Stock':'Empty' }));
-      };
-      if (from.box) await adjustBox(from.box, -1);
-      if (to.box) await adjustBox(to.box, +1);
-      setMove(moveBlank); setShowMove(false); onRefresh();
-    } catch(e) { alert('Error: '+e.message); }
-    setSaving(false);
-  };
-
-  // Full audit trail for one box: creation, sales, manual moves
-  const boxHistory = (b) => {
-    const ev = [];
-    if (b.Created) ev.push({ date: b.Created, what: '📦 Box created', detail: `${fmtG(b['Weight Grams'])} now` });
-    data.txnItems.filter(i => i['Box ID'] === b.ID).forEach(i => {
-      const t = data.transactions.find(t => t.ID === i['Txn ID']);
-      ev.push({ date: t ? t.Date : '', what: `🛍 Sold ${fmtG(i['Weight Grams'])}`, detail: `${i.Description||''}${t?' to '+t.Customer:''} — ${fmtINR(i.Amount)}` });
-    });
-    data.movements.filter(m => m.From === b['Box Name'] || m.To === b['Box Name']).forEach(m => {
-      const out = m.From === b['Box Name'];
-      ev.push({ date: m.Date, what: `${out?'↗️ Moved out':'↘️ Moved in'} ${fmtG(m['Weight Grams'])}`, detail: `${out?'to':'from'} ${out?m.To:m.From}${m.Description?' — '+m.Description:''}` });
-    });
-    return ev.sort((a,b) => (a.date||'').localeCompare(b.date||''));
-  };
-
-  const handleRefill = async () => {
-    if (!refill.weight) { alert('Enter the weight refilled.'); return; }
-    setSaving(true);
-    try {
-      const id = uid('R');
-      await appendRow('Refills', [id, refill.Date, refill.Metal, num(refill.weight), num(refill.cost), refill.mode, refill.notes]);
-      if (num(refill.cost) > 0 && refill.mode !== 'None') {
-        await addLedger(refill.Date, 'Out', refill.mode==='Cash'?'Cash':'Account', refill.cost, 'Refill', id, `${refill.Metal} refill ${refill.weight}g`);
-      }
-      setRefill(refillBlank); setShowRefill(false); onRefresh();
-    } catch(e) { alert('Error: '+e.message); }
-    setSaving(false);
-  };
-
-  const sorted = [...data.stock].sort((a,b) => (a.Metal||'').localeCompare(b.Metal||'') || (a['Box Name']||'').localeCompare(b['Box Name']||''));
+  const sorted = [...data.stock].sort((a,b) => (a['Reserve Type']||'~').localeCompare(b['Reserve Type']||'~') || (a['Box Name']||'').localeCompare(b['Box Name']||''));
+  const untagged = data.stock.filter(b => !RESERVE_NAMES.includes((b['Reserve Type']||'').trim())).length;
+  // opening contribution per reserve (metals only)
+  const openingByReserve = {};
+  RESERVES.filter(r=>r.kind!=='Cash').forEach(r => openingByReserve[r.name] = derived.reserves.find(x=>x.name===r.name)?.stockOpening || 0);
 
   return (
     <div>
       <div className="stats-row">
-        <div className="stat-card"><div className="stat-label">🥇 Gold in Boxes</div><div className="stat-value gold">{fmtG(derived.goldBoxG)}</div><div className="stat-sub">{derived.goldBoxes} boxes with stock</div></div>
-        <div className="stat-card"><div className="stat-label">🥈 Silver in Boxes</div><div className="stat-value silver">{fmtG(derived.silverBoxG)}</div><div className="stat-sub">{derived.silverBoxes} boxes with stock</div></div>
-        <div className="stat-card"><div className="stat-label">Old Gold (loose pool)</div><div className="stat-value gold">{fmtG(derived.goldPool)}</div><div className="stat-sub">Old jewel + refills − given out</div></div>
-        <div className="stat-card"><div className="stat-label">Old Silver (loose pool)</div><div className="stat-value silver">{fmtG(derived.silverPool)}</div><div className="stat-sub">Old jewel + refills − given out</div></div>
+        {RESERVES.filter(r=>r.kind!=='Cash').map(r => (
+          <div className="stat-card" key={r.name}>
+            <div className="stat-label">{r.emoji} {r.name}</div>
+            <div className={`stat-value ${r.kind==='Silver'?'silver':'gold'}`} style={{fontSize:18}}>{fmtG(openingByReserve[r.name])}</div>
+            <div className="stat-sub">opening from boxes</div>
+          </div>
+        ))}
       </div>
+
+      {untagged>0 && <div className="card" style={{marginBottom:16,borderColor:'rgba(245,158,11,.3)'}}>
+        <div style={{fontSize:13,color:'var(--gold)'}}>⚠️ {untagged} box{untagged>1?'es':''} not yet tagged to a reserve — edit each box and set its <b>Reserve Type</b> so it counts towards an opening balance.</div>
+      </div>}
 
       <div className="section-row">
-        <div className="tabs" style={{marginBottom:0}}>
-          <button className={`tab ${tab==='boxes'?'active':''}`} onClick={()=>setTab('boxes')}>Boxes</button>
-          <button className={`tab ${tab==='movements'?'active':''}`} onClick={()=>setTab('movements')}>Movement History ({data.movements.length})</button>
+        <div>
+          <h3>Stock Boxes</h3>
+          <p style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Your physical opening inventory. Live balances move on the Reserves & Convert screens.</p>
         </div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn btn-secondary" onClick={()=>{setMove(moveBlank);setShowMove(o=>!o);}}>🔀 Move Items</button>
-          <button className="btn btn-secondary" onClick={()=>setShowRefill(o=>!o)}>⚖️ Refill Gold/Silver</button>
-          <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Box</button>
-        </div>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Box</button>
       </div>
-
-      {showMove && (
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-title">Move Items (box ⇄ box, pool, or another place)</div>
-          <div className="form-grid">
-            <div className="form-group"><label>Date</label><input type="date" value={move.date} onChange={e=>mv('date',e.target.value)}/></div>
-            <div className="form-group"><label>From *</label>
-              <select value={move.from} onChange={e=>mv('from',e.target.value)}>
-                <option value="">— pick —</option>
-                {data.stock.filter(b=>num(b['Weight Grams'])>0).map(b=><option key={b.ID} value={b.ID}>{b['Box Name']} ({b.Metal}, {b['Weight Grams']}g)</option>)}
-                <option value="poolG">Old Gold Pool ({fmtG(derived.goldPool)})</option>
-                <option value="poolS">Old Silver Pool ({fmtG(derived.silverPool)})</option>
-                <option value="other">Other place (outside stock)</option>
-              </select>
-            </div>
-            {move.from==='other' && <div className="form-group"><label>From where</label><input placeholder="e.g. Home locker" value={move.otherFrom} onChange={e=>mv('otherFrom',e.target.value)}/></div>}
-            <div className="form-group"><label>To *</label>
-              <select value={move.to} onChange={e=>mv('to',e.target.value)}>
-                <option value="">— pick —</option>
-                {data.stock.map(b=><option key={b.ID} value={b.ID}>{b['Box Name']} ({b.Metal})</option>)}
-                <option value="poolG">Old Gold Pool</option>
-                <option value="poolS">Old Silver Pool</option>
-                <option value="other">Other place (leaves stock)</option>
-              </select>
-            </div>
-            {move.to==='other' && <div className="form-group"><label>To where</label><input placeholder="e.g. Given for melting" value={move.otherTo} onChange={e=>mv('otherTo',e.target.value)}/></div>}
-            {move.from==='other' && move.to==='other' && <div className="form-group"><label>Metal</label><select value={move.metal} onChange={e=>mv('metal',e.target.value)}><option>Gold</option><option>Silver</option></select></div>}
-            <div className="form-group"><label>What is moved</label><input placeholder="e.g. 2 rings" value={move.desc} onChange={e=>mv('desc',e.target.value)}/></div>
-            <div className="form-group"><label>Pieces</label><input type="number" value={move.pieces} onChange={e=>mv('pieces',e.target.value)}/></div>
-            <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" value={move.weight} onChange={e=>mv('weight',e.target.value)}/></div>
-            <div className="form-group"><label>Notes</label><input placeholder="Reason" value={move.notes} onChange={e=>mv('notes',e.target.value)}/></div>
-          </div>
-          <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleMove} disabled={saving}>{saving?<span className="spinner"/>:'Save Move'}</button>
-            <button className="btn btn-secondary" onClick={()=>setShowMove(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {showRefill && (
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-title">Refill Stock (bought/added loose gold or silver)</div>
-          <div className="form-grid">
-            <div className="form-group"><label>Date</label><input type="date" value={refill.Date} onChange={e=>rf('Date',e.target.value)}/></div>
-            <div className="form-group"><label>Metal</label><select value={refill.Metal} onChange={e=>rf('Metal',e.target.value)}><option>Gold</option><option>Silver</option></select></div>
-            <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" placeholder="10.5" value={refill.weight} onChange={e=>rf('weight',e.target.value)}/></div>
-            <div className="form-group"><label>Cost (₹)</label><input type="number" placeholder="0 if no payment" value={refill.cost} onChange={e=>rf('cost',e.target.value)}/></div>
-            <div className="form-group"><label>Paid By</label><select value={refill.mode} onChange={e=>rf('mode',e.target.value)}><option value="None">No payment</option><option>Cash</option><option>UPI</option></select></div>
-            <div className="form-group"><label>Notes</label><input placeholder="Where from" value={refill.notes} onChange={e=>rf('notes',e.target.value)}/></div>
-          </div>
-          <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleRefill} disabled={saving}>{saving?<span className="spinner"/>:'Save Refill'}</button>
-            <button className="btn btn-secondary" onClick={()=>setShowRefill(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
 
       {mode !== null && (
         <div className="card" style={{marginBottom:16}}>
           <div className="card-title">{mode==='add' ? 'New Box / Pocket / Container' : 'Edit Box'}</div>
           <div className="form-grid">
             <div className="form-group"><label>Box Name *</label><input placeholder="e.g. Box 3 / Red Pocket" value={form['Box Name']} onChange={e=>f('Box Name',e.target.value)}/></div>
-            <div className="form-group"><label>Metal</label><select value={form.Metal} onChange={e=>f('Metal',e.target.value)}><option>Gold</option><option>Silver</option></select></div>
+            <div className="form-group"><label>Metal</label><select value={form.Metal} onChange={e=>{const m=e.target.value; setForm(p=>({...p,Metal:m, 'Reserve Type': rtOptions(m).includes(p['Reserve Type'])?p['Reserve Type']:''}));}}><option>Gold</option><option>Silver</option></select></div>
+            <div className="form-group"><label>Reserve Type <span style={{color:'var(--text-muted)'}}>which reserve</span></label>
+              <select value={form['Reserve Type']} onChange={e=>f('Reserve Type',e.target.value)}>
+                <option value="">— not tagged —</option>
+                {rtOptions(form.Metal).map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>What is inside</label><input placeholder="e.g. 4 rings, 2 chains, 1 bangle" value={form.Description} onChange={e=>f('Description',e.target.value)}/></div>
             <div className="form-group"><label>Kept At (location)</label><input placeholder="e.g. Shop almirah / Bank locker" value={form.Location} onChange={e=>f('Location',e.target.value)}/></div>
             <div className="form-group"><label>Pieces</label><input type="number" placeholder="7" value={form.Pieces} onChange={e=>f('Pieces',e.target.value)}/></div>
@@ -854,239 +775,153 @@ function Stock({ data, derived, onRefresh }) {
         </div>
       )}
 
-      {tab==='boxes' ? (
       <div className="card">
         {sorted.length === 0 ? <div className="empty"><p>No boxes yet — add your first box/pocket above.</p></div> :
         <div className="table-wrap"><table>
-          <thead><tr><th>Box</th><th>Metal</th><th>What's Inside</th><th>Kept At</th><th>Pieces</th><th>Gross Wt</th><th>Net Wt</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Box</th><th>Reserve</th><th>Metal</th><th>What's Inside</th><th>Kept At</th><th>Pieces</th><th>Gross Wt</th><th>Net Wt</th><th></th></tr></thead>
           <tbody>{sorted.map(b => {
-            const hist = histFor===b.ID ? boxHistory(b) : null;
-            return (<React.Fragment key={b.ID}>
-            <tr>
+            const tagged = RESERVE_NAMES.includes((b['Reserve Type']||'').trim());
+            return (
+            <tr key={b.ID}>
               <td className="name">{b['Box Name']}</td>
+              <td>{tagged ? <span className="badge badge-blue">{b['Reserve Type']}</span> : <span className="badge badge-gold">untagged</span>}</td>
               <td><span className={`badge ${b.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{b.Metal}</span></td>
               <td>{b.Description||'—'}</td>
               <td>{b.Location||'—'}</td>
               <td className="mono">{b.Pieces||'—'}</td>
               <td className="mono" style={{color:'var(--text-muted)'}}>{num(b['Gross Weight Grams'])>0?fmtG(b['Gross Weight Grams']):'—'}</td>
               <td className="mono" style={{color:num(b['Weight Grams'])>0?'var(--text-primary)':'var(--text-muted)'}}>{fmtG(b['Weight Grams'])}</td>
-              <td><span className={`badge ${num(b['Weight Grams'])>0?'badge-green':'badge-red'}`}>{num(b['Weight Grams'])>0?'In Stock':'Empty'}</span></td>
-              <td style={{whiteSpace:'nowrap'}}>
-                <button className="btn btn-secondary btn-sm" title="History" onClick={()=>setHistFor(h=>h===b.ID?null:b.ID)}>🕘</button>{' '}
-                <button className="btn btn-secondary btn-sm" title="Edit" onClick={()=>openEdit(b)}>✏️</button>
-              </td>
-            </tr>
-            {hist && <tr><td colSpan={9} style={{background:'var(--navy)',padding:'10px 16px'}}>
-              {hist.length===0 ? <span style={{fontSize:12,color:'var(--text-muted)'}}>No recorded history for this box.</span> :
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {hist.map((e,i)=>(
-                  <div key={i} style={{display:'flex',gap:12,fontSize:12,alignItems:'baseline'}}>
-                    <span className="mono" style={{color:'var(--text-muted)',minWidth:80}}>{e.date||'—'}</span>
-                    <span style={{color:'var(--text-primary)',fontWeight:500}}>{e.what}</span>
-                    <span style={{color:'var(--text-secondary)'}}>{e.detail}</span>
-                  </div>
-                ))}
-              </div>}
-            </td></tr>}
-            </React.Fragment>);
+              <td><button className="btn btn-secondary btn-sm" title="Edit" onClick={()=>openEdit(b)}>✏️</button></td>
+            </tr>);
           })}</tbody>
         </table></div>}
       </div>
-      ) : (
-      <div className="card">
-        {data.movements.length === 0 ? <div className="empty"><p>No movements recorded yet. Use "Move Items" to log a shift between boxes, pool, or places.</p></div> :
-        <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>From</th><th>To</th><th>Metal</th><th>What</th><th>Pieces</th><th>Weight</th><th>Notes</th></tr></thead>
-          <tbody>{[...data.movements].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'')).map(m=>(
-            <tr key={m.ID}>
-              <td className="mono">{m.Date}</td>
-              <td className="name">{m.From}</td>
-              <td className="name">{m.To}</td>
-              <td><span className={`badge ${m.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{m.Metal}</span></td>
-              <td>{m.Description||'—'}</td>
-              <td className="mono">{m.Pieces||'—'}</td>
-              <td className="mono">{fmtG(m['Weight Grams'])}</td>
-              <td style={{fontSize:12}}>{m.Notes||'—'}</td>
-            </tr>
-          ))}</tbody>
-        </table></div>}
-      </div>
-      )}
     </div>
   );
 }
 
-// ── NEW TRANSACTION ──────────────────────────────────────────────────────────
-function NewTransaction({ data, derived, onRefresh, onDone }) {
+// ── CONVERT / NEW TRANSACTION — universal multi-reserve conversion ───────────
+function legQty(leg) { return isCash(leg.reserve) ? num(leg.value) : qtyFromGold(leg.weight, leg.touch, leg.margin, leg.direct); }
+function legValue(leg) { return isCash(leg.reserve) ? num(leg.value) : num(leg.value); }
+
+function Convert({ data, derived, onRefresh, onDone }) {
   const [saving, setSaving] = useState(false);
-  const [customer, setCustomer] = useState('');
-  const [phone, setPhone] = useState('');
   const [date, setDate] = useState(todayStr());
+  const [counterparty, setCounterparty] = useState('');
   const [notes, setNotes] = useState('');
+  const [remindDate, setRemindDate] = useState('');
+  const [remindTitle, setRemindTitle] = useState('');
 
-  const blankSold = () => ({ key: uid('s'), source:'Box', boxId:'', desc:'', metal:'Gold', pieces:'', weight:'', rate:'', amount:'' });
-  const blankOld  = () => ({ key: uid('o'), metal:'Gold', desc:'', weight:'', rate:'', amount:'' });
-  const [sold, setSold] = useState([]);
-  const [old, setOld]   = useState([]);
-  const [cashIn, setCashIn]   = useState('');
-  const [upiIn, setUpiIn]     = useState('');
-  const [cashOut, setCashOut] = useState('');
-  const [upiOut, setUpiOut]   = useState('');
+  const newLeg = (direction) => ({ key: uid('lg'), direction, reserve: direction==='Out'?'Ornaments':'Cash', subtype:'', weight:'', touch:'92', margin:'0', direct:'', value:'' });
+  const [legs, setLegs] = useState([newLeg('Out'), newLeg('In')]);
+  const upd = (key, patch) => setLegs(ls => ls.map(l => l.key===key ? { ...l, ...patch } : l));
+  const addLeg = (dir) => setLegs(ls => [...ls, newLeg(dir)]);
+  const delLeg = (key) => setLegs(ls => ls.filter(l => l.key!==key));
 
-  const boxes = data.stock.filter(b => num(b['Weight Grams']) > 0);
-
-  const updRow = (setList, key, patch) => setList(list => list.map(r => {
-    if (r.key !== key) return r;
-    const nr = { ...r, ...patch };
-    if ('weight' in patch || 'rate' in patch) {
-      const a = num(nr.weight) * num(nr.rate);
-      if (a > 0) nr.amount = String(Math.round(a));
-    }
-    return nr;
-  }));
-
-  const pickBox = (key, boxId) => {
-    const b = boxes.find(x => x.ID === boxId);
-    setSold(list => list.map(r => r.key===key ? { ...r, boxId, metal: b?b.Metal:r.metal, desc: b?(b.Description||b['Box Name']):r.desc } : r));
-  };
-
-  const saleTotal = sold.reduce((s,r)=>s+num(r.amount),0);
-  const oldTotal  = old.reduce((s,r)=>s+num(r.amount),0);
-  const net = saleTotal - oldTotal; // >0 customer pays us; <0 we pay customer
-  const settled = num(cashIn)+num(upiIn)-num(cashOut)-num(upiOut);
-  const balance = Math.round((net - settled)*100)/100; // >0 customer owes; <0 we owe
+  const outLegs = legs.filter(l => l.direction==='Out');
+  const inLegs  = legs.filter(l => l.direction==='In');
+  const outValue = outLegs.reduce((s,l)=>s+legValue(l),0);
+  const inValue  = inLegs.reduce((s,l)=>s+legValue(l),0);
+  const diff = Math.round((outValue - inValue)*100)/100;
 
   const handleSave = async () => {
-    if (!customer.trim()) { alert('Customer name is required.'); return; }
-    if (sold.length===0 && old.length===0) { alert('Add at least one item — sold or old jewel received.'); return; }
-    for (const r of sold) {
-      if (r.source==='Box') {
-        const b = boxes.find(x=>x.ID===r.boxId);
-        if (!b) { alert('Pick a box for every sold item (or change source to pool).'); return; }
-        if (num(r.weight) > num(b['Weight Grams']) + 0.0001) { alert(`"${b['Box Name']}" has only ${b['Weight Grams']} g — you entered ${r.weight} g.`); return; }
+    const active = legs.filter(l => legQty(l) > 0 || legValue(l) > 0);
+    if (active.length === 0) { alert('Add at least one leg with a quantity or value.'); return; }
+    // Validate metal OUT legs against current balance
+    for (const l of active) {
+      if (l.direction==='Out' && !isCash(l.reserve)) {
+        const bal = derived.balOf(l.reserve);
+        if (legQty(l) > bal + 0.001) { alert(`"${l.reserve}" has only ${fmtG(bal)} — this leg removes ${fmtG(legQty(l))}.`); return; }
       }
-      if (num(r.weight)<=0 || num(r.amount)<=0) { alert('Every sold item needs weight and amount.'); return; }
-    }
-    for (const r of old) {
-      if (num(r.weight)<=0 || num(r.amount)<=0) { alert('Every old-jewel item needs weight and amount.'); return; }
+      if (l.direction==='Out' && isCash(l.reserve)) {
+        if (num(l.value) > derived.cashBal + 0.5) { alert(`Cash has only ${fmtINR(derived.cashBal)} — this leg removes ${fmtINR(num(l.value))}.`); return; }
+      }
     }
     setSaving(true);
     try {
       const txnId = uid('TX');
-      const status = Math.abs(balance)<.5 ? 'Settled' : balance>0 ? 'Balance Due' : 'We Owe';
-      await appendRow('Transactions', [txnId, date, customer.trim(), phone, saleTotal, oldTotal, num(cashIn), num(upiIn), num(cashOut), num(upiOut), balance, status, notes]);
-
-      for (const r of sold) {
-        const src = r.source==='Box' ? 'Box' : 'Pool';
-        const metal = r.source==='SilverPool' ? 'Silver' : r.source==='GoldPool' ? 'Gold' : r.metal;
-        await appendRow('TxnItems', [uid('I'), txnId, src, r.source==='Box'?r.boxId:'', r.desc, metal, r.pieces, num(r.weight), num(r.rate), num(r.amount), 'Out']);
-        if (r.source==='Box') {
-          const b = data.stock.find(x=>x.ID===r.boxId);
-          const newW = Math.round((num(b['Weight Grams']) - num(r.weight))*1000)/1000;
-          const newP = b.Pieces!=='' && r.pieces!=='' ? Math.max(0, num(b.Pieces)-num(r.pieces)) : b.Pieces;
-          await updateRow('Stock', b._row, rowValues('Stock', { ...b, Pieces:newP, 'Weight Grams':newW, Status:newW>0?'In Stock':'Empty' }));
-        }
+      for (const l of active) {
+        await addEntry(txnId, date, {
+          reserve: l.reserve, subtype: l.subtype, direction: l.direction, qty: legQty(l),
+          weight: isCash(l.reserve)?'':l.weight, touch: isCash(l.reserve)?'':l.touch, margin: isCash(l.reserve)?'':l.margin,
+          value: legValue(l), counterparty, category: 'Convert', ref: '', notes,
+        });
       }
-      for (const r of old) {
-        await appendRow('TxnItems', [uid('I'), txnId, 'Pool', '', r.desc, r.metal, '', num(r.weight), num(r.rate), num(r.amount), 'In']);
+      if (remindDate || remindTitle.trim()) {
+        await appendRow('Reminders', [uid('RM'), todayStr(), remindDate, remindTitle.trim() || `Follow up ${counterparty||'transaction'}`, 'Transaction', txnId, 'Open', notes]);
       }
-
-      const who = customer.trim();
-      await addLedger(date, 'In',  'Cash',    cashIn,  'Sale',     txnId, `From ${who}`);
-      await addLedger(date, 'In',  'Account', upiIn,   'Sale',     txnId, `UPI from ${who}`);
-      await addLedger(date, 'Out', 'Cash',    cashOut, 'Purchase', txnId, `Paid to ${who}`);
-      await addLedger(date, 'Out', 'Account', upiOut,  'Purchase', txnId, `UPI to ${who}`);
-
       onRefresh();
       onDone();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
 
+  const renderLeg = (l) => {
+    const cash = isCash(l.reserve);
+    const qty = legQty(l);
+    return (
+      <div className="item-row" key={l.key}>
+        <div className="form-group"><label>Reserve</label>
+          <select value={l.reserve} onChange={e=>upd(l.key,{reserve:e.target.value, subtype:''})}>
+            {RESERVE_NAMES.map(n=><option key={n} value={n}>{n}{!isCash(n)?` (${fmtG(derived.balOf(n))})`:` (${fmtINR(derived.cashBal)})`}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Subtype</label><input placeholder="optional" value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}/></div>
+        {cash ? (
+          <div className="form-group"><label>Amount ₹</label><input type="number" value={l.value} onChange={e=>upd(l.key,{value:e.target.value})}/></div>
+        ) : (<>
+          <div className="form-group"><label>Weight (g)</label><input type="number" step="0.001" value={l.weight} onChange={e=>upd(l.key,{weight:e.target.value})} disabled={l.direct!==''}/></div>
+          <div className="form-group"><label>Touch</label><input type="number" step="0.1" value={l.touch} onChange={e=>upd(l.key,{touch:e.target.value})} disabled={l.direct!==''}/></div>
+          <div className="form-group"><label>Margin</label><input type="number" step="0.1" value={l.margin} onChange={e=>upd(l.key,{margin:e.target.value})} disabled={l.direct!==''}/></div>
+          <div className="form-group"><label>Direct g <span style={{color:'var(--text-muted)'}}>override</span></label><input type="number" step="0.001" placeholder="—" value={l.direct} onChange={e=>upd(l.key,{direct:e.target.value})}/></div>
+          <div className="form-group"><label>Value ₹ <span style={{color:'var(--text-muted)'}}>optional</span></label><input type="number" value={l.value} onChange={e=>upd(l.key,{value:e.target.value})}/></div>
+        </>)}
+        <button className="row-del" title="Remove" onClick={()=>delLeg(l.key)}>✕</button>
+        {!cash && qty>0 && <div style={{gridColumn:'1/-1',fontSize:11,color:'var(--gold)',marginTop:-2}}>→ {fmtG(qty)} into/out of {l.reserve}{l.direct===''?` (${l.weight||0}g × (${l.touch||0}+${l.margin||0})/100)`:' (direct)'}</div>}
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="card">
-        <div className="card-title">Customer & Date</div>
+        <div className="card-title">Transaction Details</div>
         <div className="form-grid">
-          <div className="form-group"><label>Customer Name *</label><input placeholder="Full name" value={customer} onChange={e=>setCustomer(e.target.value)}/></div>
-          <div className="form-group"><label>Phone</label><input placeholder="9876543210" value={phone} onChange={e=>setPhone(e.target.value)}/></div>
           <div className="form-group"><label>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
-          <div className="form-group"><label>Notes</label><input placeholder="Anything to remember" value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+          <div className="form-group"><label>Counterparty <span style={{color:'var(--text-muted)'}}>customer / person</span></label><input placeholder="Name (optional)" value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="What is this transaction" value={notes} onChange={e=>setNotes(e.target.value)}/></div>
         </div>
       </div>
 
       <div className="card">
         <div className="section-row" style={{marginBottom:10}}>
-          <div className="card-title" style={{marginBottom:0}}>Items Sold / Given to Customer</div>
-          <button className="btn btn-secondary btn-sm" onClick={()=>setSold(l=>[...l, blankSold()])}><Icon name="plus" size={12}/> Add Item</button>
+          <div className="card-title" style={{marginBottom:0}}>↑ Removed (Out) <span style={{fontWeight:400,textTransform:'none',color:'var(--text-muted)'}}>— reserves that go down</span></div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>addLeg('Out')}><Icon name="minus" size={12}/> Add Out</button>
         </div>
-        {sold.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>Nothing sold — e.g. for a pure old-jewel purchase, leave this empty.</div>}
-        {sold.map(r => {
-          const b = boxes.find(x=>x.ID===r.boxId);
-          return (
-          <div className="item-row" key={r.key}>
-            <div className="form-group"><label>Source</label>
-              <select value={r.source} onChange={e=>updRow(setSold, r.key, {source:e.target.value, boxId:''})}>
-                <option value="Box">From Box</option>
-                <option value="GoldPool">Old Gold Pool ({fmtG(derived.goldPool)})</option>
-                <option value="SilverPool">Old Silver Pool ({fmtG(derived.silverPool)})</option>
-              </select>
-            </div>
-            {r.source==='Box' && <div className="form-group"><label>Box {b && <span style={{color:'var(--gold)'}}>· {b['Weight Grams']}g left</span>}</label>
-              <select value={r.boxId} onChange={e=>pickBox(r.key, e.target.value)}>
-                <option value="">— pick box —</option>
-                {boxes.map(x=><option key={x.ID} value={x.ID}>{x['Box Name']} ({x.Metal}, {x['Weight Grams']}g)</option>)}
-              </select>
-            </div>}
-            <div className="form-group"><label>Item</label><input placeholder="Ring / chain..." value={r.desc} onChange={e=>updRow(setSold,r.key,{desc:e.target.value})}/></div>
-            <div className="form-group"><label>Pieces</label><input type="number" value={r.pieces} onChange={e=>updRow(setSold,r.key,{pieces:e.target.value})}/></div>
-            <div className="form-group"><label>Weight (g)</label><input type="number" step="0.001" value={r.weight} onChange={e=>updRow(setSold,r.key,{weight:e.target.value})}/></div>
-            <div className="form-group"><label>Rate ₹/g</label><input type="number" value={r.rate} onChange={e=>updRow(setSold,r.key,{rate:e.target.value})}/></div>
-            <div className="form-group"><label>Amount ₹</label><input type="number" value={r.amount} onChange={e=>updRow(setSold,r.key,{amount:e.target.value})}/></div>
-            <button className="row-del" title="Remove" onClick={()=>setSold(l=>l.filter(x=>x.key!==r.key))}>✕</button>
-          </div>);
-        })}
+        {outLegs.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>Nothing removed.</div>}
+        {outLegs.map(renderLeg)}
       </div>
 
       <div className="card">
         <div className="section-row" style={{marginBottom:10}}>
-          <div className="card-title" style={{marginBottom:0}}>Old Jewel Received from Customer</div>
-          <button className="btn btn-secondary btn-sm" onClick={()=>setOld(l=>[...l, blankOld()])}><Icon name="plus" size={12}/> Add Old Jewel</button>
+          <div className="card-title" style={{marginBottom:0}}>↓ Added (In) <span style={{fontWeight:400,textTransform:'none',color:'var(--text-muted)'}}>— reserves that go up</span></div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>addLeg('In')}><Icon name="plus" size={12}/> Add In</button>
         </div>
-        {old.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>No old gold/silver received in this transaction.</div>}
-        {old.map(r => (
-          <div className="item-row" key={r.key}>
-            <div className="form-group"><label>Metal</label><select value={r.metal} onChange={e=>updRow(setOld,r.key,{metal:e.target.value})}><option>Gold</option><option>Silver</option></select></div>
-            <div className="form-group"><label>Item</label><input placeholder="Old chain..." value={r.desc} onChange={e=>updRow(setOld,r.key,{desc:e.target.value})}/></div>
-            <div className="form-group"><label>Weight (g)</label><input type="number" step="0.001" value={r.weight} onChange={e=>updRow(setOld,r.key,{weight:e.target.value})}/></div>
-            <div className="form-group"><label>Rate ₹/g</label><input type="number" value={r.rate} onChange={e=>updRow(setOld,r.key,{rate:e.target.value})}/></div>
-            <div className="form-group"><label>Value ₹</label><input type="number" value={r.amount} onChange={e=>updRow(setOld,r.key,{amount:e.target.value})}/></div>
-            <button className="row-del" title="Remove" onClick={()=>setOld(l=>l.filter(x=>x.key!==r.key))}>✕</button>
-          </div>
-        ))}
+        {inLegs.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>Nothing added.</div>}
+        {inLegs.map(renderLeg)}
       </div>
 
       <div className="card">
-        <div className="card-title">Settlement</div>
+        <div className="card-title">Balance & Save</div>
         <div className="settle-box">
-          <div className="settle-line"><span>Items sold / given</span><span className="mono">{fmtINR(saleTotal)}</span></div>
-          <div className="settle-line"><span>Old jewel received (−)</span><span className="mono">{fmtINR(oldTotal)}</span></div>
-          <div className="settle-line total"><span>{net>=0 ? 'Customer has to pay' : 'We have to pay customer'}</span><span className="mono" style={{color:net>=0?'var(--green)':'var(--red)'}}>{fmtINR(Math.abs(net))}</span></div>
+          <div className="settle-line"><span>Total value removed (out)</span><span className="mono">{fmtINR(outValue)}</span></div>
+          <div className="settle-line"><span>Total value added (in)</span><span className="mono">{fmtINR(inValue)}</span></div>
+          <div className="settle-line total"><span>{Math.abs(diff)<.5 ? '✓ Value balanced' : diff>0 ? 'Out exceeds In by' : 'In exceeds Out by'}</span><span className="mono" style={{color:Math.abs(diff)<.5?'var(--green)':'var(--gold)'}}>{fmtINR(Math.abs(diff))}</span></div>
         </div>
+        <div style={{fontSize:11,color:'var(--text-muted)',marginTop:8}}>Value balance is only a cross-check (fill ₹ value on metal legs if you want it to tally) — the reserve quantities always post regardless.</div>
         <div className="form-grid" style={{marginTop:14}}>
-          {net>=0 ? (<>
-            <div className="form-group"><label>Cash Received (₹)</label><input type="number" value={cashIn} onChange={e=>setCashIn(e.target.value)}/></div>
-            <div className="form-group"><label>UPI Received (₹)</label><input type="number" value={upiIn} onChange={e=>setUpiIn(e.target.value)}/></div>
-          </>) : (<>
-            <div className="form-group"><label>Cash Paid to Customer (₹)</label><input type="number" value={cashOut} onChange={e=>setCashOut(e.target.value)}/></div>
-            <div className="form-group"><label>UPI Paid to Customer (₹)</label><input type="number" value={upiOut} onChange={e=>setUpiOut(e.target.value)}/></div>
-          </>)}
-        </div>
-        <div className="settle-box" style={{marginTop:14}}>
-          <div className="settle-line total">
-            <span>{Math.abs(balance)<.5 ? '✓ Fully settled' : balance>0 ? 'Balance customer owes (installments)' : 'Balance we owe customer'}</span>
-            <span className="mono" style={{color:Math.abs(balance)<.5?'var(--green)':'var(--gold)'}}>{fmtINR(Math.abs(balance))}</span>
-          </div>
+          <div className="form-group"><label>🔔 Reminder date <span style={{color:'var(--text-muted)'}}>optional</span></label><input type="date" value={remindDate} onChange={e=>setRemindDate(e.target.value)}/></div>
+          <div className="form-group"><label>Reminder note</label><input placeholder="e.g. collect balance / give receipt" value={remindTitle} onChange={e=>setRemindTitle(e.target.value)}/></div>
         </div>
         <div className="btn-row">
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving…</>:'Save Transaction'}</button>
@@ -1097,141 +932,240 @@ function NewTransaction({ data, derived, onRefresh, onDone }) {
   );
 }
 
-// ── TRANSACTIONS LIST ────────────────────────────────────────────────────────
-function Transactions({ data, derived, onRefresh, onNew }) {
-  const [filter, setFilter] = useState('all');
-  const txns = [...derived.txnOutstanding].sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
-  const shown = txns.filter(t => filter==='all' ? true : filter==='pending' ? Math.abs(t.outstanding)>.5 : Math.abs(t.outstanding)<=.5);
-
-  return (
-    <div>
-      <div className="section-row">
-        <div className="tabs" style={{marginBottom:0}}>
-          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All ({txns.length})</button>
-          <button className={`tab ${filter==='pending'?'active':''}`} onClick={()=>setFilter('pending')}>With Balance ({txns.filter(t=>Math.abs(t.outstanding)>.5).length})</button>
-          <button className={`tab ${filter==='settled'?'active':''}`} onClick={()=>setFilter('settled')}>Settled</button>
-        </div>
-        <button className="btn btn-primary" onClick={onNew}><Icon name="plus" size={14}/> New Transaction</button>
-      </div>
-      {shown.length===0 ? <div className="card"><div className="empty"><p>No transactions here yet.</p></div></div> :
-      <div className="gap-12">{shown.map(t => <TxnCard key={t.ID} t={t} data={data} onRefresh={onRefresh}/>)}</div>}
-    </div>
-  );
-}
-
-function TxnCard({ t, data, onRefresh }) {
-  const [open, setOpen] = useState(false);
-  const [showPay, setShowPay] = useState(false);
+// ── RESERVES — balances, opening, subtypes & per-reserve ledger ──────────────
+function ReservesPage({ data, derived, onRefresh, onNew }) {
+  const [openRes, setOpenRes] = useState(null);
+  const [editRes, setEditRes] = useState(null); // reserve name being edited
   const [saving, setSaving] = useState(false);
-  const [pay, setPay] = useState({ date: todayStr(), mode:'Cash', amount:'', notes:'' });
+  const [edit, setEdit] = useState({ opening:'', subtypes:'' });
 
-  const items = data.txnItems.filter(i => i['Txn ID']===t.ID);
-  const payments = data.payments.filter(p => p['Ref Type']==='Transaction' && p['Ref ID']===t.ID);
-  const out = t.outstanding;
-  const settledNow = Math.abs(out) < .5;
-
-  const handlePay = async () => {
-    const amt = num(pay.amount);
-    if (amt<=0) { alert('Enter the amount.'); return; }
+  const startEdit = (r) => { setEditRes(r.name); setEdit({ opening: r.manualOpening||0, subtypes: (r.subtypes||[]).join(', ') }); };
+  const saveEdit = async (r) => {
     setSaving(true);
     try {
-      // out>0: customer pays us (In); out<0: we pay customer (Out, stored negative so outstanding moves to 0)
-      const collecting = out > 0;
-      await appendRow('Payments', [uid('P'), pay.date, 'Transaction', t.ID, t.Customer, pay.mode, collecting?amt:-amt, '', pay.notes]);
-      await addLedger(pay.date, collecting?'In':'Out', pay.mode==='Cash'?'Cash':'Account', amt, 'Installment', t.ID, `${collecting?'From':'To'} ${t.Customer}`);
-      const remaining = out - (collecting?amt:-amt);
-      if (Math.abs(remaining)<.5 && t._row) {
-        const updated = { ...t, Status:'Settled' };
-        await updateRow('Transactions', t._row, rowValues('Transactions', updated));
-      }
-      setShowPay(false); setPay({ date: todayStr(), mode:'Cash', amount:'', notes:'' });
-      onRefresh();
+      await updateRow('Reserves', r._row, rowValues('Reserves', { Reserve:r.name, Kind:r.kind, Unit:r.unit, 'Opening Balance':num(edit.opening), Subtypes:edit.subtypes, Notes:'' }));
+      setEditRes(null); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
 
   return (
-    <div className="card" style={{padding:0,overflow:'hidden'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpen(o=>!o)}>
-        <div>
-          <div style={{fontWeight:600,fontSize:14}}>{t.Customer} <span style={{fontWeight:400,fontSize:12,color:'var(--text-muted)'}}>{t.Phone}</span></div>
-          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{t.Date} · sold {fmtINR(t['Sale Value'])} · old {fmtINR(t['Old Value'])}</div>
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">🥇 Gold Reserve (combined)</div><div className="stat-value gold">{fmtG(derived.goldTotal)}</div><div className="stat-sub">Ornaments + Metal + Old Gold</div></div>
+        <div className="stat-card"><div className="stat-label">🥈 Silver Reserve (combined)</div><div className="stat-value silver">{fmtG(derived.silverTotal)}</div><div className="stat-sub">Silver + Old Silver</div></div>
+        <div className="stat-card"><div className="stat-label">💵 Cash</div><div className="stat-value green">{fmtINR(derived.cashBal)}</div><div className="stat-sub">In hand + account</div></div>
+      </div>
+
+      <div className="section-row">
+        <h3>Reserves</h3>
+        <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+      </div>
+
+      <div className="gap-12">{derived.reserves.map(r => {
+        const entries = data.entries.filter(e => e.Reserve===r.name).sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
+        const isOpen = openRes===r.name;
+        return (
+        <div className="card" key={r.name} style={{padding:0,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenRes(o=>o===r.name?null:r.name)}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{r.emoji}</div>
+              <div>
+                <div style={{fontWeight:600,fontSize:14}}>{r.name}</div>
+                <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>opening {fmtReserve(r.name, r.opening)} · {entries.length} entries{r.subtypes.length?` · ${r.subtypes.join(', ')}`:''}</div>
+              </div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div className={`mono`} style={{fontSize:17,color:r.kind==='Silver'?'var(--silver)':r.kind==='Cash'?'var(--green)':'var(--gold)'}}>{fmtReserve(r.name, r.balance)}</div>
+              <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();startEdit(r);}}>✏️</button>
+              <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
+            </div>
+          </div>
+
+          {editRes===r.name && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px',background:'var(--navy)'}}>
+            <div className="form-grid">
+              <div className="form-group"><label>Manual Opening {isCash(r.name)?'(₹)':'(g) — adds to box-tagged opening'}</label><input type="number" step="0.001" value={edit.opening} onChange={e=>setEdit(p=>({...p,opening:e.target.value}))}/></div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}><label>Subtypes <span style={{color:'var(--text-muted)'}}>comma separated</span></label><input placeholder="e.g. 22k, 24k, coins" value={edit.subtypes} onChange={e=>setEdit(p=>({...p,subtypes:e.target.value}))}/></div>
+            </div>
+            {!isCash(r.name) && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Box-tagged opening: {fmtG(r.stockOpening)} (from Stock). Total opening = box-tagged + manual.</div>}
+            <div className="btn-row">
+              <button className="btn btn-primary btn-sm" onClick={()=>saveEdit(r)} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setEditRes(null)}>Cancel</button>
+            </div>
+          </div>}
+
+          {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'12px 18px'}}>
+            <div style={{display:'flex',gap:18,flexWrap:'wrap',fontSize:12,color:'var(--text-secondary)',marginBottom:10}}>
+              <span>Opening: <b className="mono">{fmtReserve(r.name, r.opening)}</b></span>
+              <span>Net movement: <b className="mono" style={{color:r.moved>=0?'var(--green)':'var(--red)'}}>{r.moved>=0?'+':''}{fmtReserve(r.name, r.moved)}</b></span>
+              <span>Balance: <b className="mono">{fmtReserve(r.name, r.balance)}</b></span>
+            </div>
+            {entries.length===0 ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No movements yet.</div> :
+            <div className="table-wrap"><table>
+              <thead><tr><th>Date</th><th>Dir</th><th>Qty</th><th>Touch</th><th>Value</th><th>Who/Note</th></tr></thead>
+              <tbody>{entries.slice(0,50).map(e=>(
+                <tr key={e.ID}>
+                  <td className="mono">{e.Date}</td>
+                  <td><span className={`badge ${e.Direction==='In'?'badge-green':'badge-red'}`}>{e.Direction==='In'?'↓ In':'↑ Out'}</span></td>
+                  <td className="mono">{fmtReserve(r.name, e.Qty)}</td>
+                  <td className="mono" style={{color:'var(--text-muted)'}}>{e.Touch?`${e.Touch}${num(e.Margin)?'+'+e.Margin:''}`:'—'}</td>
+                  <td className="mono">{e.Value?fmtINR(e.Value):'—'}</td>
+                  <td style={{fontSize:12}}>{e.Counterparty||e.Category||e.Notes||'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>}
+          </div>}
+        </div>);
+      })}</div>
+    </div>
+  );
+}
+
+// ── EXPENSES — money out of Cash reserve ─────────────────────────────────────
+function Expenses({ data, derived, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ date: todayStr(), amount:'', subtype:'', notes:'' });
+  const f = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const expenses = data.entries.filter(e => e.Reserve==='Cash' && e.Direction==='Out' && e.Category==='Expense')
+    .sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
+
+  const handleSave = async () => {
+    if (num(form.amount)<=0) { alert('Enter the amount.'); return; }
+    setSaving(true);
+    try {
+      await addEntry(uid('EX'), form.date, { reserve:'Cash', subtype:form.subtype, direction:'Out', qty:num(form.amount), value:num(form.amount), category:'Expense', notes:form.notes });
+      setForm({ date: todayStr(), amount:'', subtype:'', notes:'' }); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">💵 Cash Balance</div><div className={`stat-value ${derived.cashBal>=0?'green':'red'}`}>{fmtINR(derived.cashBal)}</div></div>
+        <div className="stat-card"><div className="stat-label">Total Expenses Logged</div><div className="stat-value gold">{fmtINR(expenses.reduce((s,e)=>s+num(e.Qty),0))}</div><div className="stat-sub">{expenses.length} entries</div></div>
+      </div>
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Record an Expense (from Cash)</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
+          <div className="form-group"><label>Amount (₹) *</label><input type="number" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
+          <div className="form-group"><label>Category</label><input placeholder="e.g. rent, salary, tea" value={form.subtype} onChange={e=>f('subtype',e.target.value)}/></div>
+          <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <span className={`badge ${settledNow?'badge-green':out>0?'badge-gold':'badge-red'}`}>
-            {settledNow?'Settled':out>0?`Customer owes ${fmtINR(out)}`:`We owe ${fmtINR(-out)}`}
-          </span>
-          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save Expense'}</button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-title">Recent Expenses</div>
+        {expenses.length===0 ? <div className="empty"><p>No expenses recorded yet.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Notes</th></tr></thead>
+          <tbody>{expenses.slice(0,100).map(e=>(
+            <tr key={e.ID}><td className="mono">{e.Date}</td><td>{e.Subtype||'—'}</td><td className="mono" style={{color:'var(--red)'}}>−{fmtINR(e.Qty)}</td><td style={{fontSize:12}}>{e.Notes||'—'}</td></tr>
+          ))}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── REMINDERS ────────────────────────────────────────────────────────────────
+function Reminders({ data, derived, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ due: '', title:'', notes:'' });
+  const f = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const [filter, setFilter] = useState('open');
+  const all = [...data.reminders].sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
+  const shown = all.filter(r => filter==='open' ? (r.Status||'Open')!=='Closed' : filter==='closed' ? r.Status==='Closed' : true);
+
+  const add = async () => {
+    if (!form.title.trim()) { alert('Enter a title.'); return; }
+    setSaving(true);
+    try {
+      await appendRow('Reminders', [uid('RM'), todayStr(), form.due, form.title.trim(), 'Standalone', '', 'Open', form.notes]);
+      setForm({ due:'', title:'', notes:'' }); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+  const toggle = async (r) => {
+    setSaving(true);
+    try { await updateRow('Reminders', r._row, rowValues('Reminders', { ...r, Status: r.Status==='Closed'?'Open':'Closed' })); onRefresh(); }
+    catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Add a Reminder</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Due Date</label><input type="date" value={form.due} onChange={e=>f('due',e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Title *</label><input placeholder="e.g. Collect balance from Kumar" value={form.title} onChange={e=>f('title',e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row"><button className="btn btn-primary" onClick={add} disabled={saving}>{saving?<span className="spinner"/>:'Add Reminder'}</button></div>
+      </div>
+
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${filter==='open'?'active':''}`} onClick={()=>setFilter('open')}>Open ({all.filter(r=>(r.Status||'Open')!=='Closed').length})</button>
+          <button className={`tab ${filter==='closed'?'active':''}`} onClick={()=>setFilter('closed')}>Closed</button>
+          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All</button>
         </div>
       </div>
 
-      {open && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
-        {items.length>0 && <div className="table-wrap"><table>
-          <thead><tr><th>Direction</th><th>Item</th><th>Metal</th><th>Weight</th><th>Rate</th><th>Amount</th></tr></thead>
-          <tbody>{items.map(i=>(
-            <tr key={i.ID}>
-              <td><span className={`badge ${i.Direction==='Out'?'badge-blue':'badge-green'}`}>{i.Direction==='Out'?(i.Source==='Pool'?'Given (old pool)':'Sold'):'Old jewel in'}</span></td>
-              <td>{i.Description||'—'}</td>
-              <td><span className={`badge ${i.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{i.Metal}</span></td>
-              <td className="mono">{fmtG(i['Weight Grams'])}</td>
-              <td className="mono">{i.Rate?fmtINR(i.Rate)+'/g':'—'}</td>
-              <td className="mono">{fmtINR(i.Amount)}</td>
-            </tr>
-          ))}</tbody>
-        </table></div>}
-
-        <div style={{display:'flex',gap:18,flexWrap:'wrap',marginTop:12,fontSize:12,color:'var(--text-secondary)'}}>
-          {num(t['Cash In'])>0 && <span>💵 Cash in: <b className="mono">{fmtINR(t['Cash In'])}</b></span>}
-          {num(t['UPI In'])>0 && <span>🏦 UPI in: <b className="mono">{fmtINR(t['UPI In'])}</b></span>}
-          {num(t['Cash Out'])>0 && <span>💵 Cash paid: <b className="mono">{fmtINR(t['Cash Out'])}</b></span>}
-          {num(t['UPI Out'])>0 && <span>🏦 UPI paid: <b className="mono">{fmtINR(t['UPI Out'])}</b></span>}
-          {t.Notes && <span>📝 {t.Notes}</span>}
-        </div>
-
-        {payments.length>0 && <CollapsibleSection title={`💰 Installments received (${payments.length})`} defaultOpen={true}>
-          <table><thead><tr><th>Date</th><th>Mode</th><th>Amount</th><th>Notes</th></tr></thead>
-            <tbody>{payments.map(p=>(<tr key={p.ID}><td className="mono">{p.Date}</td><td>{p.Mode}</td><td className="mono">{fmtINR(Math.abs(num(p.Amount)))}{num(p.Amount)<0?' (paid out)':''}</td><td>{p.Notes||'—'}</td></tr>))}</tbody></table>
-        </CollapsibleSection>}
-
-        {!settledNow && <div style={{marginTop:14}}>
-          {!showPay
-            ? <button className="btn btn-primary btn-sm" onClick={()=>setShowPay(true)}>{out>0?'💰 Collect Installment':'💸 Pay Customer'}</button>
-            : <div className="settle-box">
-                <div className="form-grid">
-                  <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
-                  <div className="form-group"><label>Mode</label><select value={pay.mode} onChange={e=>setPay(p=>({...p,mode:e.target.value}))}><option>Cash</option><option>UPI</option></select></div>
-                  <div className="form-group"><label>Amount (₹) — {fmtINR(Math.abs(out))} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
-                  <div className="form-group"><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
-                </div>
-                <div className="btn-row">
-                  <button className="btn btn-primary btn-sm" onClick={handlePay} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
-                  <button className="btn btn-secondary btn-sm" onClick={()=>setShowPay(false)}>Cancel</button>
-                </div>
-              </div>}
-        </div>}
-      </div>}
+      <div className="card">
+        {shown.length===0 ? <div className="empty"><p>Nothing here.</p></div> :
+        <div className="gap-12">{shown.map(r => {
+          const closed = r.Status==='Closed';
+          const overdue = !closed && r['Due Date'] && r['Due Date'] < todayStr();
+          return (<div key={r.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'12px 14px',background:'var(--navy)',borderRadius:8,border:`1px solid ${overdue?'rgba(239,68,68,.3)':'var(--border)'}`}}>
+            <div>
+              <div style={{fontWeight:500,fontSize:13,textDecoration:closed?'line-through':'none',color:closed?'var(--text-muted)':'var(--text-primary)'}}>{r.Title}</div>
+              <div style={{fontSize:11,color:overdue?'var(--red)':'var(--text-muted)',marginTop:2}}>{r['Due Date']?`Due ${r['Due Date']}`:'No date'}{overdue?' · overdue':''}{r['Linked Type']&&r['Linked Type']!=='Standalone'?` · ${r['Linked Type']}`:''}{r.Notes?` · ${r.Notes}`:''}</div>
+            </div>
+            <button className={`btn btn-sm ${closed?'btn-secondary':'btn-primary'}`} onClick={()=>toggle(r)} disabled={saving}>{closed?'Reopen':'✓ Close'}</button>
+          </div>);
+        })}</div>}
+      </div>
     </div>
   );
 }
 
 // ── LENDING ──────────────────────────────────────────────────────────────────
+const lendReserveOptions = (type) => type==='Cash' ? ['Cash'] : type==='Gold' ? ['Old Gold','Gold Metal','Ornaments'] : ['Old Silver','Silver'];
+
 function Lending({ data, derived, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const blank = { date: todayStr(), person:'', phone:'', type:'Cash', mode:'Cash', weight:'', amount:'', interest:'', due:'', notes:'' };
+  const blank = { date: todayStr(), person:'', phone:'', type:'Cash', reserve:'Cash', weight:'', amount:'', interest:'', due:'', notes:'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
+  const setType = (t) => setForm(p => ({ ...p, type:t, reserve: lendReserveOptions(t)[0] }));
 
   const handleSave = async () => {
     if (!form.person.trim()) { alert('Person name required.'); return; }
-    if (num(form.amount)<=0) { alert('Enter the ₹ value to be returned (even for gold, enter its value).'); return; }
+    if (num(form.amount)<=0) { alert('Enter the ₹ value of what is given (even for gold, enter its value).'); return; }
     if (form.type!=='Cash' && num(form.weight)<=0) { alert('Enter the weight given.'); return; }
+    const qty = form.type==='Cash' ? num(form.amount) : num(form.weight);
+    const bal = derived.balOf(form.reserve);
+    if (qty > bal + (isCash(form.reserve)?0.5:0.001)) { alert(`"${form.reserve}" has only ${fmtReserve(form.reserve,bal)} — cannot lend ${fmtReserve(form.reserve,qty)}.`); return; }
     setSaving(true);
     try {
       const id = uid('LN');
-      await appendRow('Lending', [id, form.date, form.person.trim(), form.phone, form.type, form.type==='Cash'?form.mode:'', form.type==='Cash'?'':num(form.weight), num(form.amount), num(form.interest), form.due, 'Open', form.notes]);
-      if (form.type==='Cash') {
-        await addLedger(form.date, 'Out', form.mode==='Cash'?'Cash':'Account', form.amount, 'Lending', id, `Lent to ${form.person.trim()}`);
+      const interestType = num(form.interest)>0 ? 'Simple' : 'None';
+      await appendRow('Lending', rowValues('Lending', {
+        ID:id, Date:form.date, Person:form.person.trim(), Phone:form.phone, Type:form.type, Reserve:form.reserve,
+        'Weight Grams': form.type==='Cash'?'':num(form.weight), Amount:num(form.amount), 'Interest %':num(form.interest),
+        'Interest Type':interestType, 'Due Date':form.due, Status:'Open', Notes:form.notes,
+      }));
+      await addEntry(id, form.date, { reserve:form.reserve, direction:'Out', qty,
+        weight: form.type==='Cash'?'':form.weight, value:num(form.amount), category:'Lending', ref:id,
+        counterparty:form.person.trim(), notes:`Lent to ${form.person.trim()}` });
+      if (form.due) {
+        await appendRow('Reminders', [uid('RM'), todayStr(), form.due, `Lending return — ${form.person.trim()}`, 'Lending', id, 'Open', form.notes]);
       }
       setForm(blank); setShowForm(false); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
@@ -1258,10 +1192,11 @@ function Lending({ data, derived, onRefresh }) {
           <div className="form-group"><label>Person *</label><input placeholder="Name" value={form.person} onChange={e=>f('person',e.target.value)}/></div>
           <div className="form-group"><label>Phone</label><input value={form.phone} onChange={e=>f('phone',e.target.value)}/></div>
           <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
-          <div className="form-group"><label>What Given</label><select value={form.type} onChange={e=>f('type',e.target.value)}><option>Cash</option><option>Gold</option><option>Silver</option></select></div>
-          {form.type==='Cash'
-            ? <div className="form-group"><label>Given By</label><select value={form.mode} onChange={e=>f('mode',e.target.value)}><option>Cash</option><option>UPI</option></select></div>
-            : <div className="form-group"><label>Weight (g) * <span style={{color:'var(--text-muted)'}}>from old pool</span></label><input type="number" step="0.001" value={form.weight} onChange={e=>f('weight',e.target.value)}/></div>}
+          <div className="form-group"><label>What Given</label><select value={form.type} onChange={e=>setType(e.target.value)}><option>Cash</option><option>Gold</option><option>Silver</option></select></div>
+          <div className="form-group"><label>From Reserve <span style={{color:'var(--text-muted)'}}>{fmtReserve(form.reserve, derived.balOf(form.reserve))} avail</span></label>
+            <select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{lendReserveOptions(form.type).map(n=><option key={n} value={n}>{n}</option>)}</select>
+          </div>
+          {form.type!=='Cash' && <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" value={form.weight} onChange={e=>f('weight',e.target.value)}/></div>}
           <div className="form-group"><label>Value Given (₹) *</label><input type="number" placeholder="Principal value" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
           <div className="form-group"><label>Interest % per month</label><input type="number" step="0.1" placeholder="0 = free help" value={form.interest} onChange={e=>f('interest',e.target.value)}/></div>
           <div className="form-group"><label>Return By (date)</label><input type="date" value={form.due} onChange={e=>f('due',e.target.value)}/></div>
@@ -1291,16 +1226,19 @@ function LendCard({ l, data, onRefresh }) {
   const payments = data.payments.filter(p=>p['Ref Type']==='Lending' && p['Ref ID']===l.ID);
   const overdue = l['Due Date'] && l.outstanding>.5 && l['Due Date'] < todayStr();
 
+  const destReserve = (mode) => mode==='Gold' ? 'Old Gold' : mode==='Silver' ? 'Old Silver' : 'Cash';
+
   const handlePay = async () => {
     const amt = num(pay.amount);
     if (amt<=0) { alert('Enter the ₹ value returned.'); return; }
-    if ((pay.mode==='Gold'||pay.mode==='Silver') && num(pay.weight)<=0) { alert('Enter the weight returned.'); return; }
+    const metalReturn = pay.mode==='Gold'||pay.mode==='Silver';
+    if (metalReturn && num(pay.weight)<=0) { alert('Enter the weight returned.'); return; }
     setSaving(true);
     try {
-      await appendRow('Payments', [uid('P'), pay.date, 'Lending', l.ID, l.Person, pay.mode, amt, (pay.mode==='Gold'||pay.mode==='Silver')?num(pay.weight):'', pay.notes]);
-      if (pay.mode==='Cash' || pay.mode==='UPI') {
-        await addLedger(pay.date, 'In', pay.mode==='Cash'?'Cash':'Account', amt, 'Lending Return', l.ID, `From ${l.Person}`);
-      }
+      await appendRow('Payments', rowValues('Payments', { ID:uid('P'), Date:pay.date, 'Ref Type':'Lending', 'Ref ID':l.ID, Person:l.Person, Mode:pay.mode, Amount:amt, 'Weight Grams':metalReturn?num(pay.weight):'', Notes:pay.notes }));
+      const dest = destReserve(pay.mode);
+      await addEntry(l.ID, pay.date, { reserve:dest, direction:'In', qty: metalReturn?num(pay.weight):amt,
+        weight: metalReturn?pay.weight:'', value:amt, category:'Lending Return', ref:l.ID, counterparty:l.Person, notes:`From ${l.Person}` });
       if (l.outstanding - amt < .5 && l._row) {
         await updateRow('Lending', l._row, rowValues('Lending', { ...l, Status:'Closed' }));
       }
@@ -1348,7 +1286,7 @@ function LendCard({ l, data, onRefresh }) {
                   <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
                   <div className="form-group"><label>Returned As</label><select value={pay.mode} onChange={e=>setPay(p=>({...p,mode:e.target.value}))}><option>Cash</option><option>UPI</option><option>Gold</option><option>Silver</option></select></div>
                   <div className="form-group"><label>Value (₹) — {fmtINR(l.outstanding)} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
-                  {(pay.mode==='Gold'||pay.mode==='Silver') && <div className="form-group"><label>Weight (g) — goes back to pool</label><input type="number" step="0.001" value={pay.weight} onChange={e=>setPay(p=>({...p,weight:e.target.value}))}/></div>}
+                  {(pay.mode==='Gold'||pay.mode==='Silver') && <div className="form-group"><label>Weight (g) — into {pay.mode==='Gold'?'Old Gold':'Old Silver'}</label><input type="number" step="0.001" value={pay.weight} onChange={e=>setPay(p=>({...p,weight:e.target.value}))}/></div>}
                   <div className="form-group"><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
                 </div>
                 <div className="btn-row">
@@ -1362,116 +1300,6 @@ function LendCard({ l, data, onRefresh }) {
   );
 }
 
-// ── LEDGER ───────────────────────────────────────────────────────────────────
-function Ledger({ data, derived, onRefresh }) {
-  const [showForm, setShowForm] = useState(false);
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState('all');
-  const blank = { date: todayStr(), direction:'In', mode:'Cash', amount:'', category:'Opening Balance', notes:'' };
-  const [form, setForm] = useState(blank);
-  const f = (k,v)=>setForm(p=>({...p,[k]:v}));
-  const [tf, setTf] = useState({ date: todayStr(), dir:'CashToAccount', amount:'' });
-
-  const handleSave = async () => {
-    if (num(form.amount)<=0) { alert('Enter amount.'); return; }
-    setSaving(true);
-    try {
-      await addLedger(form.date, form.direction, form.mode, form.amount, form.category, '', form.notes);
-      setForm(blank); setShowForm(false); onRefresh();
-    } catch(e) { alert('Error: '+e.message); }
-    setSaving(false);
-  };
-
-  const handleTransfer = async () => {
-    if (num(tf.amount)<=0) { alert('Enter amount.'); return; }
-    setSaving(true);
-    try {
-      const toAcct = tf.dir==='CashToAccount';
-      await addLedger(tf.date, 'Out', toAcct?'Cash':'Account', tf.amount, 'Transfer', '', toAcct?'Deposited to account':'Withdrawn to cash');
-      await addLedger(tf.date, 'In',  toAcct?'Account':'Cash', tf.amount, 'Transfer', '', toAcct?'Deposited to account':'Withdrawn to cash');
-      setTf({ date: todayStr(), dir:'CashToAccount', amount:'' }); setShowTransfer(false); onRefresh();
-    } catch(e) { alert('Error: '+e.message); }
-    setSaving(false);
-  };
-
-  const rows = [...data.ledger].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
-  const shown = rows.filter(r => filter==='all'?true : filter==='cash'?r.Mode==='Cash' : r.Mode!=='Cash');
-
-  return (
-    <div>
-      <div className="stats-row">
-        <div className="stat-card"><div className="stat-label">💵 Cash in Hand</div><div className={`stat-value ${derived.cashInHand>=0?'green':'red'}`}>{fmtINR(derived.cashInHand)}</div></div>
-        <div className="stat-card"><div className="stat-label">🏦 Account / UPI</div><div className={`stat-value ${derived.accountBal>=0?'green':'red'}`}>{fmtINR(derived.accountBal)}</div></div>
-        <div className="stat-card"><div className="stat-label">Total Money</div><div className="stat-value">{fmtINR(derived.cashInHand+derived.accountBal)}</div></div>
-      </div>
-
-      <div className="section-row">
-        <div className="tabs" style={{marginBottom:0}}>
-          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All</button>
-          <button className={`tab ${filter==='cash'?'active':''}`} onClick={()=>setFilter('cash')}>Cash</button>
-          <button className={`tab ${filter==='account'?'active':''}`} onClick={()=>setFilter('account')}>Account</button>
-        </div>
-        <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-secondary" onClick={()=>setShowTransfer(o=>!o)}>🔁 Cash ⇄ Account</button>
-          <button className="btn btn-primary" onClick={()=>setShowForm(o=>!o)}><Icon name="plus" size={14}/> Manual Entry</button>
-        </div>
-      </div>
-
-      {showTransfer && <div className="card" style={{marginBottom:16}}>
-        <div className="card-title">Transfer Between Cash and Account</div>
-        <div className="form-grid">
-          <div className="form-group"><label>Date</label><input type="date" value={tf.date} onChange={e=>setTf(p=>({...p,date:e.target.value}))}/></div>
-          <div className="form-group"><label>Direction</label><select value={tf.dir} onChange={e=>setTf(p=>({...p,dir:e.target.value}))}>
-            <option value="CashToAccount">Cash → Account (deposit)</option>
-            <option value="AccountToCash">Account → Cash (withdraw)</option>
-          </select></div>
-          <div className="form-group"><label>Amount (₹)</label><input type="number" value={tf.amount} onChange={e=>setTf(p=>({...p,amount:e.target.value}))}/></div>
-        </div>
-        <div className="btn-row">
-          <button className="btn btn-primary" onClick={handleTransfer} disabled={saving}>{saving?<span className="spinner"/>:'Save Transfer'}</button>
-          <button className="btn btn-secondary" onClick={()=>setShowTransfer(false)}>Cancel</button>
-        </div>
-      </div>}
-
-      {showForm && <div className="card" style={{marginBottom:16}}>
-        <div className="card-title">Manual Ledger Entry (opening balance, expense, other)</div>
-        <div className="form-grid">
-          <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
-          <div className="form-group"><label>Direction</label><select value={form.direction} onChange={e=>f('direction',e.target.value)}><option value="In">Money In</option><option value="Out">Money Out</option></select></div>
-          <div className="form-group"><label>Where</label><select value={form.mode} onChange={e=>f('mode',e.target.value)}><option>Cash</option><option>Account</option></select></div>
-          <div className="form-group"><label>Amount (₹)</label><input type="number" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
-          <div className="form-group"><label>Category</label><select value={form.category} onChange={e=>f('category',e.target.value)}>
-            <option>Opening Balance</option><option>Expense</option><option>Personal</option><option>Other</option>
-          </select></div>
-          <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
-        </div>
-        <div className="btn-row">
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save Entry'}</button>
-          <button className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
-        </div>
-      </div>}
-
-      <div className="card">
-        {shown.length===0 ? <div className="empty"><p>No ledger entries yet. Start by adding your opening balances (Manual Entry).</p></div> :
-        <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>In/Out</th><th>Where</th><th>Amount</th><th>Category</th><th>Notes</th></tr></thead>
-          <tbody>{shown.slice(0,200).map(r=>(
-            <tr key={r.ID}>
-              <td className="mono">{r.Date}</td>
-              <td><span className={`badge ${r.Direction==='In'?'badge-green':'badge-red'}`}>{r.Direction==='In'?'↓ In':'↑ Out'}</span></td>
-              <td>{r.Mode}</td>
-              <td className="mono" style={{color:r.Direction==='In'?'var(--green)':'var(--red)'}}>{r.Direction==='In'?'+':'−'}{fmtINR(r.Amount)}</td>
-              <td><span className="badge badge-blue">{r.Category}</span></td>
-              <td style={{fontSize:12}}>{r.Notes||'—'}</td>
-            </tr>
-          ))}</tbody>
-        </table></div>}
-      </div>
-    </div>
-  );
-}
-
 // ── ASK AI ───────────────────────────────────────────────────────────────────
 function NLPQuery({ data, derived }) {
   const [messages, setMessages] = useState([{role:'ai',text:'Ask me anything about your jewel stock, transactions, balances or lending. 💎'}]);
@@ -1480,12 +1308,12 @@ function NLPQuery({ data, derived }) {
   const endRef = useRef(null);
 
   const suggestions = [
-    'How much gold stock do I have in total?',
-    'Who still owes me money?',
-    'How much cash and account balance do I have?',
-    'Show this month\'s sales total',
+    'What is my total gold reserve right now?',
+    'Show the balance of every reserve',
+    'How much cash do I have?',
     'What lending is overdue and how much interest has built up?',
-    'What items were moved recently?',
+    'What open reminders do I have?',
+    'Show recent conversions',
   ];
 
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
@@ -1749,7 +1577,7 @@ function Setup() {
         <div className={`setup-num ${cfg.accessToken ? 'done' : ''}`}>{cfg.accessToken ? <Icon name="check" size={14}/> : '2'}</div>
         <div className="setup-text">
           <h3>Sign in with Google</h3>
-          <p>Authorize access to your Google Sheet. On first load the app creates all needed tabs (Stock, Transactions, TxnItems, Lending, Payments, Ledger, Refills, Movements) automatically.</p>
+          <p>Authorize access to your Google Sheet. On first load the app creates all needed tabs (Stock, Reserves, Entries, Lending, Payments, Reminders) and seeds the six reserves automatically. Your existing Stock data is preserved — just add a <code>Reserve Type</code> column at the end and tag each row.</p>
           <div className="config-status">
             <div className={`dot ${cfg.accessToken ? 'dot-green' : 'dot-red'}`}/>
             <span style={{fontSize:12,color:cfg.accessToken?'var(--green)':'var(--red)'}}>{cfg.accessToken ? 'Signed in — Google Sheets access active' : 'Not signed in'}</span>
@@ -1839,7 +1667,7 @@ function Setup() {
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [page, setPage] = useState('dashboard');
-  const [data, setData] = useState({ stock: [], transactions: [], txnItems: [], lending: [], payments: [], ledger: [], refills: [], movements: [] });
+  const [data, setData] = useState({ stock: [], reserves: [], entries: [], lending: [], payments: [], reminders: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -1860,11 +1688,11 @@ function App() {
     setLoadError('');
     try {
       await initSheets();
-      const [stock, transactions, txnItems, lending, payments, ledger, refills, movements] = await Promise.all([
-        readSheet('Stock'), readSheet('Transactions'), readSheet('TxnItems'),
-        readSheet('Lending'), readSheet('Payments'), readSheet('Ledger'), readSheet('Refills'), readSheet('Movements'),
+      const [stock, reserves, entries, lending, payments, reminders] = await Promise.all([
+        readSheet('Stock'), readSheet('Reserves'), readSheet('Entries'),
+        readSheet('Lending'), readSheet('Payments'), readSheet('Reminders'),
       ]);
-      setData({ stock, transactions, txnItems, lending, payments, ledger, refills, movements });
+      setData({ stock, reserves, entries, lending, payments, reminders });
       setAuthed(true);
     } catch (e) {
       console.error('loadData error:', e);
@@ -1880,27 +1708,29 @@ function App() {
 
   useEffect(() => { if (unlocked) loadData(); }, [loadData, unlocked]);
 
-  const derived = useMemo(() => computeDerived(data), [data]);
+  const derived = useMemo(() => computeReserves(data), [data]);
 
   const nav = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
-    { id: 'stock', label: 'Stock', icon: 'box', section: 'Manage' },
-    { id: 'newtxn', label: 'New Transaction', icon: 'exchange', section: 'Manage' },
-    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Manage' },
+    { id: 'reserves', label: 'Reserves', icon: 'layers', section: 'Manage' },
+    { id: 'convert', label: 'New Transaction', icon: 'exchange', section: 'Manage' },
     { id: 'lending', label: 'Lending', icon: 'hand', section: 'Manage' },
-    { id: 'ledger', label: 'Cash & Account', icon: 'currency', section: 'Manage' },
+    { id: 'expenses', label: 'Expenses', icon: 'currency', section: 'Manage' },
+    { id: 'stock', label: 'Stock', icon: 'box', section: 'Manage' },
+    { id: 'reminders', label: 'Reminders', icon: 'bell', section: 'Tools' },
     { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
     { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
   ];
 
   const sections = [...new Set(nav.map(n => n.section))];
   const titles = {
-    dashboard: ['Dashboard', 'Stock, money and balances at a glance'],
-    stock: ['Stock', 'Boxes, pockets & loose old gold/silver'],
-    newtxn: ['New Transaction', 'Sell, buy old jewel, exchange — all in one'],
-    transactions: ['Transactions', 'History, balances & installments'],
-    lending: ['Lending', 'Gold or cash given to help — track returns'],
-    ledger: ['Cash & Account', 'Every rupee movement, cash in hand & account'],
+    dashboard: ['Dashboard', 'Reserves, lending and reminders at a glance'],
+    reserves: ['Reserves', 'Balances, opening & per-reserve ledger'],
+    convert: ['New Transaction', 'Convert between reserves — sell, buy, exchange'],
+    lending: ['Lending', 'Cash or metal given to help — track returns & interest'],
+    expenses: ['Expenses', 'Money spent out of the Cash reserve'],
+    stock: ['Stock', 'Boxes & pockets — physical opening inventory'],
+    reminders: ['Reminders', 'Follow-ups to close'],
     nlp: ['Ask AI', 'Natural language questions about your data'],
     setup: ['Setup', 'Google Sheets, sharing and API keys'],
   };
@@ -1918,12 +1748,13 @@ function App() {
       );
     }
     switch (page) {
-      case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage}/>;
-      case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
-      case 'newtxn': return <NewTransaction data={data} derived={derived} onRefresh={loadData} onDone={()=>setPage('transactions')}/>;
-      case 'transactions': return <Transactions data={data} derived={derived} onRefresh={loadData} onNew={()=>setPage('newtxn')}/>;
+      case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage} onRefresh={loadData}/>;
+      case 'reserves': return <ReservesPage data={data} derived={derived} onRefresh={loadData} onNew={()=>setPage('convert')}/>;
+      case 'convert': return <Convert data={data} derived={derived} onRefresh={loadData} onDone={()=>setPage('reserves')}/>;
       case 'lending': return <Lending data={data} derived={derived} onRefresh={loadData}/>;
-      case 'ledger': return <Ledger data={data} derived={derived} onRefresh={loadData}/>;
+      case 'expenses': return <Expenses data={data} derived={derived} onRefresh={loadData}/>;
+      case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
+      case 'reminders': return <Reminders data={data} derived={derived} onRefresh={loadData}/>;
       case 'nlp': return <NLPQuery data={data} derived={derived}/>;
       case 'setup': return <Setup/>;
       default: return null;
