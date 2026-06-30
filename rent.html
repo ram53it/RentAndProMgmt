@@ -1,0 +1,2332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Property Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #0f1b2d;
+      --navy-mid: #162236;
+      --navy-light: #1e3050;
+      --navy-border: #2a4166;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-light: rgba(59,130,246,0.12);
+      --gold: #f59e0b;
+      --green: #10b981;
+      --green-light: rgba(16,185,129,0.12);
+      --red: #ef4444;
+      --red-light: rgba(239,68,68,0.10);
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --surface: #162236;
+      --surface-2: #1e3050;
+      --border: #2a4166;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --mono: 'JetBrains Mono', monospace;
+    }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', sans-serif; background: var(--navy); color: var(--text-primary); min-height: 100vh; display: flex; }
+    #root { display: flex; width: 100%; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; min-height: 100vh; background: var(--navy-mid); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+    .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-logo .logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+    .sidebar-logo .logo-mark svg { width: 18px; height: 18px; fill: white; }
+    .sidebar-logo h1 { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .sidebar-logo p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .sidebar-nav { padding: 12px 8px; flex: 1; }
+    .nav-section { margin-bottom: 20px; }
+    .nav-section-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; padding: 0 8px; margin-bottom: 4px; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border: none; background: none; width: 100%; text-align: left; transition: all .15s; }
+    .nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-light); color: var(--accent); }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+    .setup-badge { font-size: 11px; background: rgba(245,158,11,.12); color: var(--gold); border: 1px solid rgba(245,158,11,.25); border-radius: 6px; padding: 6px 10px; cursor: pointer; text-align: center; }
+
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--navy-mid); }
+    .topbar h2 { font-size: 16px; font-weight: 600; }
+    .topbar p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+    .card + .card { margin-top: 16px; }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+
+    /* Stats row */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+    .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .stat-value { font-family: var(--mono); font-size: 24px; font-weight: 500; color: var(--text-primary); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.gold { color: var(--gold); }
+    .stat-value.red { color: var(--red); }
+    .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    td { padding: 12px; border-bottom: 1px solid rgba(42,65,102,.5); color: var(--text-secondary); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); color: var(--text-primary); }
+    .mono { font-family: var(--mono); font-size: 12px; }
+    td.name { color: var(--text-primary); font-weight: 500; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 20px; }
+    .badge-green { background: var(--green-light); color: var(--green); }
+    .badge-red { background: var(--red-light); color: var(--red); }
+    .badge-gold { background: rgba(245,158,11,.12); color: var(--gold); }
+    .badge-blue { background: var(--accent-light); color: var(--accent); }
+
+    /* Forms */
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+    .form-group input, .form-group select, .form-group textarea {
+      background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 9px 12px; font-size: 13px; color: var(--text-primary); font-family: inherit;
+      transition: border-color .15s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .form-group select option { background: var(--navy); }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; font-family: inherit; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+    .btn-secondary:hover { color: var(--text-primary); border-color: var(--accent); }
+    .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+    /* NLP Panel */
+    .nlp-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; height: 480px; }
+    .nlp-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
+    .msg-avatar { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+    .msg-avatar.user { background: var(--accent-light); color: var(--accent); }
+    .msg-avatar.ai { background: rgba(16,185,129,.15); color: var(--green); }
+    .msg-bubble { background: var(--surface-2); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.6; color: var(--text-primary); max-width: 600px; }
+    .msg-bubble.user { background: var(--accent-light); border: 1px solid rgba(59,130,246,.2); }
+    .msg-bubble pre { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; margin-top: 8px; background: rgba(0,0,0,.2); padding: 10px; border-radius: 6px; }
+    .nlp-input-row { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+    .nlp-input { flex: 1; background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; color: var(--text-primary); font-family: inherit; resize: none; height: 42px; }
+    .nlp-input:focus { outline: none; border-color: var(--accent); }
+    .nlp-suggestions { padding: 0 16px 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .nlp-chip { font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; background: none; font-family: inherit; transition: all .15s; }
+    .nlp-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Setup page */
+    .setup-step { display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border); margin-bottom: 12px; align-items: flex-start; }
+    .setup-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .setup-num.done { background: var(--green-light); color: var(--green); }
+    .setup-text h3 { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+    .setup-text p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .setup-text code { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; color: var(--accent); }
+    .input-block { background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-top: 8px; font-size: 12px; font-family: var(--mono); color: var(--text-secondary); word-break: break-all; }
+    .config-status { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot-green { background: var(--green); }
+    .dot-red { background: var(--red); }
+    .dot-gold { background: var(--gold); }
+
+    /* Loading */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+    .empty svg { width: 40px; height: 40px; margin-bottom: 12px; opacity: .4; }
+    .empty p { font-size: 13px; margin-top: 6px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 2px; background: var(--navy); border-radius: var(--radius); padding: 4px; margin-bottom: 20px; width: fit-content; }
+    .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: all .15s; border: none; background: none; font-family: inherit; }
+    .tab.active { background: var(--surface); color: var(--text-primary); }
+
+    /* Utility */
+    .section-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .section-row h3 { font-size: 15px; font-weight: 600; }
+    .gap-12 { display: flex; flex-direction: column; gap: 12px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
+      .sidebar { width: 56px; }
+      .sidebar .sidebar-logo h1, .sidebar .nav-item span, .nav-section-label, .sidebar-logo p, .sidebar-footer { display: none; }
+      .nav-item { justify-content: center; padding: 10px; }
+      /* Layout spacing */
+      .content { padding: 12px; }
+      .topbar { padding: 10px 14px; }
+      .topbar p { display: none; }
+      /* Stats — 2 cols on mobile */
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      /* Tabs — full width, scrollable */
+      .tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+      .tab { white-space: nowrap; }
+      /* Forms — single column */
+      .form-grid { grid-template-columns: 1fr; }
+      /* Tables — allow horizontal scroll instead of collapsing */
+      .table-wrap table { width: max-content; min-width: 100%; }
+      /* NLP / AI chat */
+      .nlp-panel { height: 360px; }
+      .nlp-suggestions { display: none; }
+      /* PropCard / PropertyRentCard header right cluster */
+      .prop-card-right { gap: 6px !important; }
+      .prop-occ-badge-header { display: none !important; }
+      /* Month year grid — stack vertically */
+      .month-year-grid { grid-template-columns: 1fr !important; }
+    }
+
+    /* PIN screen */
+    .pin-screen { position: fixed; inset: 0; background: var(--navy); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .pin-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px 32px; width: 100%; max-width: 380px; text-align: center; }
+    .pin-logo { width: 48px; height: 48px; background: var(--accent); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    .pin-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .pin-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5; }
+    .pin-dots { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; }
+    .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); transition: all .15s; }
+    .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+    .pin-dot.error { background: var(--red); border-color: var(--red); }
+    .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .pin-key { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 18px; font-weight: 500; cursor: pointer; color: var(--text-primary); transition: all .15s; font-family: var(--mono); }
+    .pin-key:hover { background: var(--navy-light); border-color: var(--accent); }
+    .pin-key:active { transform: scale(.95); }
+    .pin-key.del { font-size: 14px; color: var(--text-muted); }
+    .pin-error { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 18px; }
+    .pin-setup-form { text-align: left; }
+    .pin-setup-form .form-group { margin-bottom: 12px; }
+    .pin-toggle { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 12px; display: inline-block; }
+
+    /* Receipt modal */
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px; }
+    .modal-box { background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto; }
+    .modal-actions { display:flex;gap:10px;padding:16px;border-top:1px solid #e5e7eb;background:#fff;border-radius:0 0 16px 16px; }
+
+    /* Receipt content — white/print styling */
+    .receipt-wrap { background:#fff;color:#111;padding:32px 28px;font-family:'Inter',sans-serif; }
+    .receipt-title { text-align:center;font-size:26px;font-weight:800;letter-spacing:.04em;color:#111;margin-bottom:4px; }
+    .receipt-emoji { text-align:center;font-size:32px;margin-bottom:6px; }
+    .receipt-divider { border:none;border-top:2px solid #111;margin:16px 0; }
+    .receipt-divider-light { border:none;border-top:1px dashed #ccc;margin:8px 0; }
+    .receipt-label { font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px; }
+    .receipt-value { font-size:15px;color:#111;margin-bottom:12px; }
+    .receipt-row { display:flex;justify-content:space-between;align-items:center;padding:8px 0; }
+    .receipt-row-label { font-size:14px;color:#555; }
+    .receipt-row-value { font-size:14px;font-weight:700;color:#111; }
+    .receipt-amount-box { background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:18px;text-align:center;margin:16px 0; }
+    .receipt-amount-label { font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px; }
+    .receipt-amount-value { font-size:36px;font-weight:800;color:#15803d; }
+    .receipt-footer { text-align:center;font-size:12px;color:#888;margin-top:8px;line-height:1.8; }
+
+    /* Multi-month selector */
+    .month-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px; }
+    .month-chip { padding:6px 4px;border-radius:6px;border:1px solid var(--border);font-size:12px;text-align:center;cursor:pointer;background:var(--navy);color:var(--text-muted);transition:all .15s; }
+    .month-chip.selected { background:var(--accent-light);border-color:var(--accent);color:var(--accent);font-weight:500; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── CONFIG — PIN-encrypted localStorage ──────────────────────────────────────
+// Keys are AES-GCM encrypted with your PIN before being stored.
+// Nothing sensitive is ever in the source code.
+const STORE_KEY = 'pm_enc_config';
+const TOKEN_KEY = 'pm_access_token';
+
+async function deriveKey(pin) {
+  const enc = new TextEncoder();
+  const raw = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('pm-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptConfig(pin, data) {
+  const key = await deriveKey(pin);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
+  const buf = new Uint8Array(iv.byteLength + cipher.byteLength);
+  buf.set(iv, 0); buf.set(new Uint8Array(cipher), iv.byteLength);
+  return btoa(String.fromCharCode(...buf));
+}
+
+async function decryptConfig(pin, b64) {
+  try {
+    const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = buf.slice(0, 12), data = buf.slice(12);
+    const key = await deriveKey(pin);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return JSON.parse(new TextDecoder().decode(plain));
+  } catch { return null; }
+}
+
+function hasEncryptedConfig() { return !!localStorage.getItem(STORE_KEY); }
+
+async function loadConfig(pin) {
+  const b64 = localStorage.getItem(STORE_KEY);
+  if (!b64) return null;
+  const cfg = await decryptConfig(pin, b64);
+  return cfg;
+}
+
+async function persistConfig(pin, cfg) {
+  const toStore = { spreadsheetId: cfg.spreadsheetId, clientId: cfg.clientId, geminiKey: cfg.geminiKey };
+  const enc = await encryptConfig(pin, toStore);
+  localStorage.setItem(STORE_KEY, enc);
+}
+
+// Runtime config — set after PIN unlock, never written to source
+let _runtimeConfig = null;
+const getConfig = () => ({ ...(_runtimeConfig || {}), accessToken: localStorage.getItem(TOKEN_KEY) || null });
+const saveConfig = (cfg) => {
+  if (cfg.accessToken !== undefined) {
+    if (cfg.accessToken) localStorage.setItem(TOKEN_KEY, cfg.accessToken);
+    else localStorage.removeItem(TOKEN_KEY);
+  }
+};
+const setRuntimeConfig = (cfg) => { _runtimeConfig = cfg; };
+
+// ── GOOGLE SHEETS API ─────────────────────────────────────────────────────────
+const SHEETS = {
+  PROPERTIES: 'Properties',
+  TENANTS: 'Tenants',
+  RENT: 'Rent',
+  MAINTENANCE: 'Maintenance',
+  UTILITIES: 'Utilities',
+};
+
+async function sheetsRequest(method, path, body = null) {
+  const cfg = getConfig();
+  if (!cfg.accessToken) throw new Error('Not authenticated');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.spreadsheetId}${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: { Authorization: `Bearer ${cfg.accessToken}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : null,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 401) { saveConfig({ ...cfg, accessToken: null }); throw new Error('Session expired — please sign in again'); }
+    throw new Error(err.error?.message || 'Sheets API error');
+  }
+  return res.json();
+}
+
+async function readSheet(sheetName) {
+  const data = await sheetsRequest('GET', `/values/${sheetName}`);
+  const rows = data.values || [];
+  if (rows.length === 0) return [];
+  const headers = rows[0];
+  if (rows.length === 1) return []; // only headers, no data
+  return rows.slice(1).filter(row => row && row.some(c => c !== '')).map((row, i) => {
+    const obj = { _row: i + 2 };
+    headers.forEach((h, j) => { obj[h] = (row[j] !== undefined ? row[j] : ''); });
+    return obj;
+  });
+}
+
+async function appendRow(sheetName, values) {
+  await sheetsRequest('POST', `/values/${sheetName}!A1:append?valueInputOption=USER_ENTERED`, {
+    values: [values],
+  });
+}
+
+async function updateRow(sheetName, rowNum, values, numCols) {
+  const col = String.fromCharCode(64 + numCols);
+  await sheetsRequest('PUT', `/values/${sheetName}!A${rowNum}:${col}${rowNum}?valueInputOption=USER_ENTERED`, {
+    values: [values],
+  });
+}
+
+// Initialize sheet headers — only writes header if row 1 is completely empty
+async function initSheets() {
+  const headers = {
+    Properties:  ['ID', 'Name', 'Address', 'Type', 'Rent Amount', 'Occupancy', 'Notes', 'Created'],
+    Tenants:     ['ID', 'Property ID', 'Name', 'Phone', 'Email', 'Advance', 'Move In Date', 'Status', 'Notes', 'Last Rent Revision'],
+    Rent:        ['ID', 'Property ID', 'Tenant ID', 'Month', 'Year', 'Amount', 'Paid Date', 'Status', 'Notes', 'Payment Method'],
+    Maintenance: ['ID', 'Property ID', 'Date', 'Description', 'Amount', 'Vendor', 'Category'],
+    Utilities:   ['Property ID', 'Electricity Number', 'Property Tax Number', 'Property Tax Value', 'Water Bill Number', 'Notes'],
+  };
+  for (const [sheet, h] of Object.entries(headers)) {
+    try {
+      const existing = await sheetsRequest('GET', `/values/${sheet}!A1:A1`);
+      const hasHeader = existing.values && existing.values.length > 0 && existing.values[0][0];
+      if (!hasHeader) {
+        const endCol = String.fromCharCode(64 + h.length);
+        await sheetsRequest('PUT', `/values/${sheet}!A1:${endCol}1?valueInputOption=USER_ENTERED`, { values: [h] });
+        console.log('initSheets: wrote header for', sheet);
+      }
+    } catch(e) { console.warn('initSheets error for', sheet, e.message); }
+  }
+}
+
+// ── GOOGLE AUTH ───────────────────────────────────────────────────────────────
+function signInWithGoogle() {
+  const cfg = getConfig();
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: 'token',
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    prompt: 'consent',
+  });
+  window.location.href = `https://accounts.google.com/o/oauth2/auth?${params}`;
+}
+
+function parseTokenFromHash() {
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  const token = hash.get('access_token');
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    window.history.replaceState({}, '', window.location.pathname);
+    return token;
+  }
+  return null;
+}
+
+// ── SMART DATA FILTER — send only what the query needs ───────────────────────
+function filterDataForQuery(question, allData) {
+  const q = question.toLowerCase();
+  const now = new Date();
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthName = lastMonth.toLocaleString('en-IN', { month: 'long' });
+  const lastYear = String(lastMonth.getFullYear());
+
+  // Detect which months are mentioned
+  const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const mentionedMonths = monthNames.filter(m => q.includes(m));
+  const mentionedYears  = ['2022','2023','2024','2025','2026','2027'].filter(y => q.includes(y));
+
+  // Detect which property is mentioned
+  const mentionedProp = allData.properties.find(p => q.includes(p.Name.toLowerCase()));
+
+  // Decide which datasets are needed
+  const needsRent        = q.match(/rent|paid|collect|pending|payment|receipt|month|revenue/);
+  const needsTenants     = q.match(/tenant|phone|mobile|contact|name|advance|who|person|move/);
+  const needsMaintenance = q.match(/maintenance|repair|spent|expense|cost|vendor/);
+  const needsUtilities   = q.match(/electricity|eb|water|tax|utility|number/);
+  const needsProperties  = true; // always include properties (small data, always useful)
+
+  // Filter rent: by property if mentioned, by month/year if mentioned, else last 3 months
+  let rentData = allData.rent;
+  if (mentionedProp) {
+    rentData = rentData.filter(r => r['Property ID'] === mentionedProp.ID);
+  }
+  if (mentionedMonths.length > 0) {
+    rentData = rentData.filter(r => mentionedMonths.some(m => r.Month.toLowerCase() === m));
+  } else if (mentionedYears.length > 0) {
+    rentData = rentData.filter(r => mentionedYears.includes(String(r.Year)));
+  } else if (q.includes('last month') || q.includes('previous month')) {
+    rentData = rentData.filter(r => r.Month === lastMonthName && r.Year === lastYear);
+  } else if (q.includes('this year')) {
+    rentData = rentData.filter(r => r.Year === String(now.getFullYear()));
+  } else if (q.includes('last year')) {
+    rentData = rentData.filter(r => r.Year === String(now.getFullYear() - 1));
+  } else if (q.includes('all') || q.includes('total') || q.includes('history') || q.includes('summary')) {
+    // keep all rent
+  } else {
+    // default: last 3 months
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    rentData = rentData.filter(r => {
+      const d = new Date(`${r.Month} 1, ${r.Year}`);
+      return d >= cutoff;
+    });
+  }
+
+  // Filter tenants by property if mentioned
+  let tenantData = allData.tenants;
+  if (mentionedProp) tenantData = tenantData.filter(t => t['Property ID'] === mentionedProp.ID);
+  // For phone/contact queries only need active tenants unless asking about past
+  if (needsTenants && !q.includes('past') && !q.includes('previous') && !q.includes('old')) {
+    tenantData = tenantData.filter(t => t.Status === 'Active');
+  }
+
+  // Filter maintenance by property if mentioned, else last 6 months
+  let maintenanceData = allData.maintenance;
+  if (mentionedProp) {
+    maintenanceData = maintenanceData.filter(m => m['Property ID'] === mentionedProp.ID);
+  } else if (!q.includes('all') && !q.includes('total') && !q.includes('history')) {
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+    maintenanceData = maintenanceData.filter(m => new Date(m.Date) >= cutoff);
+  }
+
+  // Strip internal fields to reduce tokens
+  const slim = (arr, fields) => arr.map(row => {
+    const obj = {};
+    fields.forEach(f => { if (row[f] !== undefined && row[f] !== '') obj[f] = row[f]; });
+    return obj;
+  });
+
+  const result = {
+    properties: slim(allData.properties, ['ID','Name','Address','Type','Rent Amount','Occupancy']),
+  };
+  if (needsRent)        result.rent        = slim(rentData,        ['Property ID','Month','Year','Amount','Paid Date','Status','Payment Method']);
+  if (needsTenants)     result.tenants     = slim(tenantData,      ['Property ID','Name','Phone','Advance','Move In Date','Last Rent Revision','Status']);
+  if (needsMaintenance) result.maintenance = slim(maintenanceData, ['Property ID','Date','Description','Amount','Category']);
+  if (needsUtilities)   result.utilities   = slim(allData.utilities,['Property ID','Electricity Number','Property Tax Number','Property Tax Value','Water Bill Number']);
+
+  // Token estimate (rough: 1 token ≈ 4 chars)
+  const tokens = Math.round(JSON.stringify(result).length / 4);
+  console.log(`Query filter: rent=${rentData.length}r, tenants=${tenantData?.length||0}t, maint=${maintenanceData?.length||0}m | ~${tokens} tokens`);
+  return result;
+}
+
+// ── AI NLP — auto-detects Claude (sk-ant-) or Gemini (AIza) key ─────────────
+async function askClaude(question, allData) {
+  const cfg = getConfig();
+  const key = cfg.geminiKey || '';
+  if (!key) return 'AI API key not set. Add it in Setup → Step 3.';
+
+  // Smart filter — only send relevant data
+  const filtered = filterDataForQuery(question, allData);
+
+  const now = new Date();
+  const lastMonth = new Date(now.getFullYear(), now.getMonth()-1, 1);
+
+  const context = `You are a property management assistant. Answer questions concisely and helpfully using only the data provided.
+For amounts use ₹ symbol. Be specific with numbers and names. Use short lists where helpful.
+Today: ${now.toLocaleDateString('en-IN')}. Last month: ${lastMonth.toLocaleString('en-IN',{month:'long'})} ${lastMonth.getFullYear()}.
+
+DATA:
+${JSON.stringify(filtered)}`;
+
+  const isClaude = key.startsWith('sk-ant-');
+
+  if (isClaude) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, system: context, messages: [{ role: 'user', content: question }] }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Claude API error'); }
+    const data = await res.json();
+    return data.content[0].text;
+  } else {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: context }] },
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        generationConfig: { maxOutputTokens: 1000 }
+      }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Gemini API error'); }
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
+  }
+}
+
+// ── ICONS ─────────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 16 }) => {
+  const icons = {
+    home: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+    users: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+    currency: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
+    tool: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
+    zap: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+    chat: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+    settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
+    plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    send: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+    check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polyline points="20 6 9 17 4 12"/></svg>,
+    external: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
+    dashboard: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+// ── PAGES ─────────────────────────────────────────────────────────────────────
+
+// ── SHARED HELPERS ────────────────────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const YEARS  = ['2022','2023','2024','2025','2026','2027'];
+const fmtINR = (v) => '₹' + Number(v||0).toLocaleString('en-IN');
+
+// Inline edit row for tables
+function EditBtn({ onClick }) {
+  return <button className="btn btn-secondary btn-sm" onClick={onClick} title="Edit">✏️</button>;
+}
+function SaveBtn({ onClick, saving }) {
+  return <button className="btn btn-primary btn-sm" onClick={onClick} disabled={saving}>{saving?'…':'Save'}</button>;
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────────────
+function Dashboard({ data, loading }) {
+  const now       = new Date();
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = lastMonthDate.toLocaleString('en-IN', { month: 'long' });
+  const lastYear  = String(lastMonthDate.getFullYear());
+
+  const totalProperties    = data.properties.length;
+  const activeTenantsCount = data.tenants.filter(t => t.Status === 'Active').length;
+  const vacantCount        = data.properties.filter(p => p['Occupancy'] === 'Vacant').length;
+  const billableProps      = data.properties.filter(p => p.Occupancy !== 'Vacant' && p.Occupancy !== 'NotApplicable' && p.Occupancy !== 'OwnUsage');
+
+  const lastMonthRent   = data.rent.filter(r => r.Month === lastMonth && r.Year === lastYear);
+  const collectedAmount = lastMonthRent.filter(r => r.Status === 'Paid').reduce((s,r) => s + Number(r.Amount||0), 0);
+  const paidPropIds     = lastMonthRent.filter(r => r.Status === 'Paid').map(r => r['Property ID']);
+  const pendingCount    = billableProps.filter(p => !paidPropIds.includes(p.ID)).length;
+  const maintenanceTotal= data.maintenance.reduce((s,m) => s + Number(m.Amount||0), 0);
+
+  // Sort: pending first, then paid, then N/A
+  const sortedProps = [...data.properties].sort((a, b) => {
+    const skipA = a.Occupancy==='Vacant'||a.Occupancy==='NotApplicable'||a.Occupancy==='OwnUsage';
+    const skipB = b.Occupancy==='Vacant'||b.Occupancy==='NotApplicable'||b.Occupancy==='OwnUsage';
+    const paidA = paidPropIds.includes(a.ID);
+    const paidB = paidPropIds.includes(b.ID);
+    if (skipA && !skipB) return 1;
+    if (!skipA && skipB) return -1;
+    if (!paidA && paidB) return -1;
+    if (paidA && !paidB) return 1;
+    return 0;
+  });
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">Properties</div><div className="stat-value">{totalProperties}</div><div className="stat-sub">{vacantCount} vacant</div></div>
+        <div className="stat-card"><div className="stat-label">Active Tenants</div><div className="stat-value green">{activeTenantsCount}</div><div className="stat-sub">Currently occupied</div></div>
+        <div className="stat-card"><div className="stat-label">Rent Collected — {lastMonth} {lastYear}</div><div className="stat-value green">{fmtINR(collectedAmount)}</div><div className="stat-sub">{paidPropIds.length} of {billableProps.length} properties</div></div>
+        <div className="stat-card"><div className="stat-label">Pending — {lastMonth}</div><div className="stat-value" style={{color:pendingCount>0?'var(--red)':'var(--green)'}}>{pendingCount}</div><div className="stat-sub">Properties not paid</div></div>
+        <div className="stat-card"><div className="stat-label">Maintenance Spent</div><div className="stat-value gold">{fmtINR(maintenanceTotal)}</div><div className="stat-sub">All time</div></div>
+      </div>
+      <div className="two-col">
+        <div className="card">
+          <div className="card-title">Properties Overview — {lastMonth} {lastYear}</div>
+          {data.properties.length === 0 ? <div className="empty"><p>No properties yet.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Property</th><th>Tenant</th><th>Rent</th><th>Occupancy</th><th>Rent Status</th></tr></thead>
+            <tbody>{sortedProps.map(p => {
+              const tenant = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
+              const paid   = paidPropIds.includes(p.ID);
+              const skip   = p.Occupancy==='Vacant'||p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage';
+              const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+              return (<tr key={p.ID}>
+                <td className="name">{p.Name}</td>
+                <td>{tenant ? tenant.Name : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                <td className="mono">{fmtINR(p['Rent Amount'])}</td>
+                <td><span className={`badge ${occColor}`}>{p.Occupancy||'Occupied'}</span></td>
+                <td><span className={`badge ${skip?'badge-blue':paid?'badge-green':'badge-red'}`}>{skip?'N/A':paid?'Paid':'Pending'}</span></td>
+              </tr>);
+            })}</tbody>
+          </table></div>}
+        </div>
+        <div className="card">
+          <div className="card-title">Recent Maintenance</div>
+          {data.maintenance.length === 0 ? <div className="empty"><p>No maintenance records yet.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Property</th><th>Description</th><th>Amount</th></tr></thead>
+            <tbody>{[...data.maintenance].reverse().slice(0,6).map((m,i) => {
+              const prop = data.properties.find(p => p.ID === m['Property ID']);
+              return (<tr key={i}><td>{prop?prop.Name:m['Property ID']}</td><td>{m.Description}</td><td className="mono">{fmtINR(m.Amount)}</td></tr>);
+            })}</tbody>
+          </table></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PROPERTIES ───────────────────────────────────────────────────────────────
+function Properties({ data, onRefresh, onGoToRent }) {
+  const [mode, setMode]     = useState(null); // null | 'add' | {editing: row}
+  const [saving, setSaving] = useState(false);
+  const blank = { ID:'', Name:'', Address:'', Type:'Apartment', 'Rent Amount':'', Occupancy:'Occupied', Notes:'',
+    ebNum:'', taxNum:'', taxValue:'', waterNum:'', utilNotes:'',
+    tName:'', tPhone:'', tEmail:'', tAdvance:'', tMoveIn:'', tLastRentRevision:'', tNotes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p => ({...p, [k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (p) => {
+    const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+    setForm({ ...blank, ...p, ebNum: u['Electricity Number']||'', taxNum: u['Property Tax Number']||'', taxValue: u['Property Tax Value']||'', waterNum: u['Water Bill Number']||'', utilNotes: u['Notes']||'' });
+    setMode({ editing: p._row, utilRow: u._row, propId: p.ID });
+  };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form.Name || !form['Rent Amount']) { alert('Property name and rent amount required.'); return; }
+    setSaving(true);
+    try {
+      const id = (mode==='add') ? `P${Date.now()}` : form.ID;
+
+      if (mode === 'add') {
+        await appendRow('Properties', [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, new Date().toLocaleDateString('en-IN')]);
+        // utilities row
+        await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.taxValue||'', form.waterNum||'', form.utilNotes||'']);
+        // optional tenant
+        if (form.tName && form.tPhone) {
+          await appendRow('Tenants', [`T${Date.now()}`, id, form.tName, form.tPhone, form.tEmail||'', form.tAdvance||'', form.tMoveIn||'', 'Active', form.tNotes||'', form.tLastRentRevision||'']);
+        }
+      } else {
+        // update property row
+        await updateRow('Properties', mode.editing, [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, form.Created||''], 8);
+        // update or create utilities row
+        if (mode.utilRow) {
+          await updateRow('Utilities', mode.utilRow, [id, form.ebNum||'', form.taxNum||'', form.taxValue||'', form.waterNum||'', form.utilNotes||''], 6);
+        } else {
+          await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.taxValue||'', form.waterNum||'', form.utilNotes||'']);
+        }
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const isEditing = mode && mode.editing;
+  const showForm  = mode !== null;
+
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Properties</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Property</button>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{isEditing ? 'Edit Property' : 'New Property'}</div>
+          {/* Core property fields */}
+          <div className="form-grid">
+            <div className="form-group"><label>Property Name *</label><input placeholder="e.g. Chennai Flat 1" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
+            <div className="form-group"><label>Type</label>
+              <select value={form.Type} onChange={e=>f('Type',e.target.value)}>
+                <option>Apartment</option><option>House</option><option>Shop</option><option>Office</option><option>Land</option>
+              </select>
+            </div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input placeholder="Full address" value={form.Address} onChange={e=>f('Address',e.target.value)}/></div>
+            <div className="form-group"><label>Monthly Rent (₹) *</label><input type="number" placeholder="15000" value={form['Rent Amount']} onChange={e=>f('Rent Amount',e.target.value)}/></div>
+            <div className="form-group"><label>Occupancy Status</label>
+              <select value={form.Occupancy} onChange={e=>f('Occupancy',e.target.value)}>
+                <option value="Occupied">Occupied</option>
+                <option value="Vacant">Vacant</option>
+                <option value="NotApplicable">Not Applicable</option>
+                <option value="OwnUsage">Own Usage</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+
+          {/* Utility numbers */}
+          <div style={{margin:'16px 0 8px',fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em'}}>Utility Numbers</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Electricity Number</label><input placeholder="EB consumer no." value={form.ebNum} onChange={e=>f('ebNum',e.target.value)}/></div>
+            <div className="form-group"><label>Property Tax Number</label><input placeholder="Tax ref no." value={form.taxNum} onChange={e=>f('taxNum',e.target.value)}/></div>
+            <div className="form-group"><label>Property Tax Value (₹)</label><input type="number" placeholder="Annual tax amount" value={form.taxValue} onChange={e=>f('taxValue',e.target.value)}/></div>
+            <div className="form-group"><label>Water Bill Number</label><input placeholder="Water consumer no." value={form.waterNum} onChange={e=>f('waterNum',e.target.value)}/></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Utility Notes</label><input placeholder="e.g. EB office number, meter location..." value={form.utilNotes} onChange={e=>f('utilNotes',e.target.value)}/></div>
+          </div>
+
+          {/* Tenant details — only on add */}
+          {!isEditing && (
+            <>
+              <div style={{margin:'16px 0 8px',fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em'}}>Tenant Details <span style={{fontWeight:400,color:'var(--text-muted)'}}>(optional — can add later)</span></div>
+              <div className="form-grid">
+                <div className="form-group"><label>Tenant Name</label><input placeholder="Full name" value={form.tName} onChange={e=>f('tName',e.target.value)}/></div>
+                <div className="form-group"><label>Phone</label><input placeholder="9876543210" value={form.tPhone} onChange={e=>f('tPhone',e.target.value)}/></div>
+                <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.tEmail} onChange={e=>f('tEmail',e.target.value)}/></div>
+                <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.tAdvance} onChange={e=>f('tAdvance',e.target.value)}/></div>
+                <div className="form-group"><label>Move-in Date</label><input type="date" value={form.tMoveIn} onChange={e=>f('tMoveIn',e.target.value)}/></div>
+                <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form.tLastRentRevision} onChange={e=>f('tLastRentRevision',e.target.value)}/></div>
+                <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.tNotes} onChange={e=>f('tNotes',e.target.value)}/></div>
+              </div>
+            </>
+          )}
+
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:isEditing?'Update Property':'Save Property'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {data.properties.length === 0
+        ? <div className="card"><div className="empty"><Icon name="home" size={40}/><p>No properties yet.</p></div></div>
+        : <div className="gap-12">
+            {data.properties.map(p => (
+              <PropCard key={p.ID} p={p} data={data} onEdit={openEdit} onGoToRent={onGoToRent}/>
+            ))}
+          </div>
+      }
+    </div>
+  );
+}
+
+function PropCard({ p, data, onEdit, onGoToRent }) {
+  const [open, setOpen] = useState(false);
+  const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+  const tenant  = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
+  const allTens = data.tenants.filter(t => t['Property ID'] === p.ID);
+  const lastPaidRent = data.rent.filter(r=>r['Property ID']===p.ID&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+  const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+  const occIcon  = p.Occupancy==='Vacant'?'🔓':p.Occupancy==='OwnUsage'?'🏡':p.Occupancy==='NotApplicable'?'📋':'🏠';
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      {/* Header row — always visible */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background:open?'var(--surface-2)':'var(--surface)'}}
+        onClick={()=>setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{occIcon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{p.Name}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{p.Address||p.Type}</div>
+          </div>
+        </div>
+        <div className="prop-card-right" style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(p['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+            {lastPaidRent
+              ? <div style={{fontSize:11,marginTop:2}}>Last paid: <span style={{color:'var(--green)',fontWeight:600}}>{lastPaidRent.Month} {lastPaidRent.Year}</span></div>
+              : <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>No rent recorded</div>}
+          </div>
+          <span className={`badge ${occColor} prop-occ-badge-header`}>{p.Occupancy||'Occupied'}</span>
+          <EditBtn onClick={e=>{e.stopPropagation();onEdit(p);}}/>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'16px 18px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:14,marginBottom:16}}>
+          <div><div className="stat-label">Type</div><span className="badge badge-blue" style={{marginTop:4,display:'inline-block'}}>{p.Type}</span></div>
+          <div><div className="stat-label">Rent/Month</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:4}}>{fmtINR(p['Rent Amount'])}</div></div>
+          <div><div className="stat-label">Occupancy</div><span className={`badge ${occColor}`} style={{marginTop:4,display:'inline-block'}}>{p.Occupancy||'Occupied'}</span></div>
+          {p.Notes && <div><div className="stat-label">Notes</div><div style={{fontSize:13,marginTop:4,color:'var(--text-secondary)'}}>{p.Notes}</div></div>}
+          <div style={{display:'flex',alignItems:'flex-end'}}>
+            <button className="btn btn-secondary btn-sm" style={{gap:5}} onClick={e=>{e.stopPropagation();onGoToRent&&onGoToRent(p.ID);}}>
+              💰 View Rent History →
+            </button>
+          </div>
+        </div>
+
+        {/* Tenant section */}
+        <CollapsibleSection title={`👤 Tenants (${allTens.filter(t=>t.Status==='Active').length} active)`} defaultOpen={true}>
+          {allTens.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
+            : allTens.map(t=>(
+              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
+                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
+              </div>
+            ))
+          }
+        </CollapsibleSection>
+
+        {/* Utility section */}
+        <CollapsibleSection title="⚡ Utility Numbers" defaultOpen={true}>
+          <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{u['Electricity Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{u['Property Tax Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{u['Property Tax Value']?fmtINR(u['Property Tax Value']):'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{u['Water Bill Number']||'—'}</div></div>
+            {u['Notes']&&<div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{u['Notes']}</div></div>}
+          </div>
+        </CollapsibleSection>
+      </div>}
+    </div>
+  );
+}
+
+function CollapsibleSection({ title, children, defaultOpen=false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{marginTop:8,borderTop:'1px solid rgba(42,65,102,.4)',paddingTop:8}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'6px 0'}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{fontSize:13,fontWeight:600,color:'var(--text-secondary)'}}>{title}</span>
+        <span style={{color:'var(--text-muted)',fontSize:18,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+      </div>
+      {open && <div style={{background:'var(--navy)',borderRadius:8,padding:'12px 14px',marginTop:4}}>{children}</div>}
+    </div>
+  );
+}
+
+// ── TENANTS ──────────────────────────────────────────────────────────────────
+function Tenants({ data, onRefresh }) {
+  const [mode, setMode]     = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab]       = useState('active');
+  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'' };
+  const [form, setForm]     = useState(blank);
+  const f = (k,v) => setForm(p => ({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (t) => { setForm({...blank,...t}); setMode({editing:t._row, id:t.ID}); };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form['Property ID'] || !form.Name || !form.Phone) { alert('Property, name and phone required.'); return; }
+    setSaving(true);
+    try {
+      if (mode === 'add') {
+        // vacate existing active tenant for this property
+        for (const t of data.tenants.filter(t => t['Property ID'] === form['Property ID'] && t.Status === 'Active')) {
+          await updateRow('Tenants', t._row, [t.ID, t['Property ID'], t.Name, t.Phone, t.Email, t.Advance, t['Move In Date'], 'Vacated', t.Notes, t['Last Rent Revision']||''], 10);
+        }
+        await appendRow('Tenants', [`T${Date.now()}`, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', 'Active', form.Notes||'', form['Last Rent Revision']||'']);
+        // mark property occupied
+        const prop = data.properties.find(p => p.ID === form['Property ID']);
+        if (prop) await updateRow('Properties', prop._row, [prop.ID, prop.Name, prop.Address, prop.Type, prop['Rent Amount'], 'Occupied', prop.Notes, prop.Created||''], 8);
+      } else {
+        await updateRow('Tenants', mode.editing, [mode.id, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', form.Status||'Active', form.Notes||'', form['Last Rent Revision']||''], 10);
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const filtered = data.tenants.filter(t => tab==='active' ? t.Status==='Active' : t.Status!=='Active');
+
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Tenants</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Tenant</button>
+      </div>
+
+      {mode !== null && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{mode==='add'?'New Tenant':'Edit Tenant'}</div>
+          {mode==='add' && <div style={{fontSize:12,color:'var(--gold)',marginBottom:12,padding:'8px 12px',background:'rgba(245,158,11,.08)',borderRadius:6,border:'1px solid rgba(245,158,11,.2)'}}>Existing active tenant for this property will be auto-vacated.</div>}
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Tenant Name *</label><input placeholder="Full name" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
+            <div className="form-group"><label>Phone *</label><input placeholder="9876543210" value={form.Phone} onChange={e=>f('Phone',e.target.value)}/></div>
+            <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.Email} onChange={e=>f('Email',e.target.value)}/></div>
+            <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.Advance} onChange={e=>f('Advance',e.target.value)}/></div>
+            <div className="form-group"><label>Move-in Date</label><input type="date" value={form['Move In Date']} onChange={e=>f('Move In Date',e.target.value)}/></div>
+            <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form['Last Rent Revision']} onChange={e=>f('Last Rent Revision',e.target.value)}/></div>
+            {mode!=='add' && <div className="form-group"><label>Status</label>
+              <select value={form.Status||'Active'} onChange={e=>f('Status',e.target.value)}>
+                <option>Active</option><option>Vacated</option>
+              </select>
+            </div>}
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:mode==='add'?'Save Tenant':'Update Tenant'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="tabs">
+        <button className={`tab ${tab==='active'?'active':''}`} onClick={()=>setTab('active')}>Active ({data.tenants.filter(t=>t.Status==='Active').length})</button>
+        <button className={`tab ${tab==='past'?'active':''}`} onClick={()=>setTab('past')}>Past ({data.tenants.filter(t=>t.Status!=='Active').length})</button>
+      </div>
+
+      <div className="card">
+        {filtered.length===0 ? <div className="empty"><p>No {tab} tenants.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Last Rent Revision</th><th>Last Rent Paid</th><th>Status</th><th></th></tr></thead>
+          <tbody>{filtered.map(t => {
+            const prop = data.properties.find(p => p.ID === t['Property ID']);
+            const lastPaidRent = data.rent.filter(r=>r['Property ID']===t['Property ID']&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            return (<tr key={t.ID}>
+              <td className="name">{t.Name}</td>
+              <td>{prop?prop.Name:t['Property ID']}</td>
+              <td className="mono">{t.Phone}</td>
+              <td className="mono">{fmtINR(t.Advance)}</td>
+              <td style={{color:'var(--text-muted)'}}>{t['Move In Date']}</td>
+              <td style={{color: t['Last Rent Revision'] ? 'var(--gold)' : 'var(--text-muted)'}}>{t['Last Rent Revision']||'—'}</td>
+              <td style={{color: lastPaidRent ? 'var(--green)' : 'var(--text-muted)',fontWeight: lastPaidRent?600:400}}>{lastPaidRent ? `${lastPaidRent.Month} ${lastPaidRent.Year}` : '—'}</td>
+              <td><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></td>
+              <td><EditBtn onClick={()=>openEdit(t)}/></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── RECEIPT MODAL ─────────────────────────────────────────────────────────────
+function ReceiptModal({ receipt, onClose }) {
+  const receiptRef = useRef();
+  const [generating, setGenerating] = useState(false);
+
+  const recNum = receipt.receiptId || ('REC' + Math.floor(10000000 + Math.random()*90000000));
+  const now    = new Date();
+  const genTime = now.toLocaleDateString('en-IN') + ' at ' + now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+
+  const monthLabel = receipt.months.length === 1
+    ? `${receipt.months[0].month} ${receipt.months[0].year}`
+    : `${receipt.months[0].month} ${receipt.months[0].year} to ${receipt.months[receipt.months.length-1].month} ${receipt.months[receipt.months.length-1].year}`;
+
+  const captureAndShare = async () => {
+    setGenerating(true);
+    try {
+      const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        // Open image in new tab for saving / sharing
+        const imgWin = window.open('', '_blank');
+        imgWin.document.write(`
+          <html><head><title>Rent Receipt</title>
+          <meta name="viewport" content="width=device-width,initial-scale=1"/>
+          <style>body{margin:0;background:#f3f4f6;display:flex;flex-direction:column;align-items:center;padding:16px;font-family:sans-serif;}
+          img{max-width:100%;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.15);}
+          .bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;justify-content:center;}
+          .btn{padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;}
+          .wa{background:#25d366;color:#fff;}.dl{background:#2563eb;color:#fff;}</style></head>
+          <body>
+          <div class="bar">
+            <button class="btn wa" onclick="openWA()">📲 Send on WhatsApp</button>
+            <button class="btn dl" onclick="dl()">⬇️ Download Image</button>
+          </div>
+          <img id="img" src="${url}"/>
+          <script>
+            const phone='${receipt.phone}'.replace(/\\D/g,'');
+            const intlPhone=phone.startsWith('91')?phone:'91'+phone;
+            function openWA(){
+              const isMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
+              const waUrl=isMobile
+                ?'whatsapp://send?phone='+intlPhone
+                :'https://web.whatsapp.com/send?phone='+intlPhone;
+              window.open(waUrl,'_blank');
+              alert('WhatsApp opened!\\n\\nSteps:\\n1. Download the image below\\n2. Attach it in the WhatsApp chat');
+            }
+            function dl(){
+              const a=document.createElement('a');
+              a.href='${url}';
+              a.download='rent-receipt-${receipt.tenantName.replace(/\\s+/g,'-')}.png';
+              a.click();
+            }
+          <\/script></body></html>`);
+        imgWin.document.close();
+        setGenerating(false);
+      }, 'image/png');
+    } catch(e) { alert('Error generating receipt: '+e.message); setGenerating(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box">
+        {/* Receipt content — this gets captured as image */}
+        <div ref={receiptRef} className="receipt-wrap">
+          <div className="receipt-emoji">🏠</div>
+          <div className="receipt-title">RENT RECEIPT</div>
+          <hr className="receipt-divider"/>
+
+          <div className="receipt-label">Received From</div>
+          <div className="receipt-value">{receipt.tenantName}</div>
+
+          <div className="receipt-label">Contact Number</div>
+          <div className="receipt-value">{receipt.phone}</div>
+
+          <div className="receipt-label">Property Address</div>
+          <div className="receipt-value">{receipt.address}</div>
+
+          <hr className="receipt-divider-light"/>
+
+          <div className="receipt-row">
+            <span className="receipt-row-label">Rent For</span>
+            <span className="receipt-row-value">{monthLabel}</span>
+          </div>
+          <hr className="receipt-divider-light"/>
+          <div className="receipt-row">
+            <span className="receipt-row-label">Received On</span>
+            <span className="receipt-row-value">{receipt.paidDate}</span>
+          </div>
+          <hr className="receipt-divider-light"/>
+          <div className="receipt-row">
+            <span className="receipt-row-label">Payment Method</span>
+            <span className="receipt-row-value">{receipt.paymentMethod}</span>
+          </div>
+
+          <div className="receipt-amount-box">
+            <div className="receipt-amount-label">Amount Received</div>
+            <div className="receipt-amount-value">₹ {Number(receipt.totalAmount).toLocaleString('en-IN')}</div>
+          </div>
+
+          <hr className="receipt-divider"/>
+          <div className="receipt-footer">
+            Thank you for your timely payment<br/>
+            Receipt #{recNum}<br/>
+            Generated on {genTime}
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-primary" style={{flex:1,justifyContent:'center',background:'#25d366'}} onClick={captureAndShare} disabled={generating}>
+            {generating ? <><span className="spinner"/>&nbsp;Generating...</> : '📲 Generate & Send WhatsApp'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RENT ─────────────────────────────────────────────────────────────────────
+function Rent({ data, onRefresh, initialPropId, onClearTarget }) {
+  const [mode, setMode]      = useState(null);
+  const [saving, setSaving]  = useState(false);
+  const [receipt, setReceipt]= useState(null);
+  const [viewTab, setViewTab]= useState(initialPropId ? 'property' : 'month');
+  const [filterProp, setFilterProp] = useState(initialPropId || '');
+
+  useEffect(() => {
+    if (initialPropId) { setViewTab('property'); setFilterProp(initialPropId); onClearTarget&&onClearTarget(); }
+  }, [initialPropId]);
+  const [filterMonth, setFM] = useState(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).toLocaleString('en-IN',{month:'long'}));
+  const [filterYear,  setFY] = useState(String(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).getFullYear()));
+
+  const _now       = new Date();
+  const _lastMonth = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+  const curMonth   = _lastMonth.toLocaleString('en-IN',{month:'long'});
+  const curYear    = String(_lastMonth.getFullYear());
+
+  // blank form — selectedMonths is array of {month, year}
+  const blank = {
+    'Property ID':'', selectedMonths:[], perMonthAmount:'',
+    totalAmount:'', 'Paid Date': new Date().toISOString().split('T')[0],
+    Status:'Paid', paymentMethod:'Cash', Notes:''
+  };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  // For edit — single month mode
+  const blankEdit = { 'Property ID':'', Month:curMonth, Year:curYear, Amount:'', 'Paid Date': new Date().toISOString().split('T')[0], Status:'Paid', paymentMethod:'Cash', Notes:'' };
+  const [editForm, setEditForm] = useState(blankEdit);
+  const ef = (k,v) => setEditForm(p=>({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (r) => { setEditForm({...blankEdit,...r, paymentMethod: r.paymentMethod||'Cash'}); setMode({editing:r._row, id:r.ID}); };
+
+  // Toggle month selection in grid
+  const toggleMonth = (month, year) => {
+    const key = `${month}|${year}`;
+    const exists = form.selectedMonths.find(m => `${m.month}|${m.year}` === key);
+    let updated;
+    if (exists) {
+      updated = form.selectedMonths.filter(m => `${m.month}|${m.year}` !== key);
+    } else {
+      updated = [...form.selectedMonths, {month, year}];
+    }
+    const total = updated.length * Number(form.perMonthAmount||0);
+    setForm(p=>({...p, selectedMonths:updated, totalAmount: total||''}));
+  };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form['Property ID'] || form.selectedMonths.length===0 || !form.perMonthAmount) {
+      alert('Select property, at least one month, and per-month amount.'); return;
+    }
+    const _prop = data.properties.find(p=>p.ID===form['Property ID']);
+    const _rentAmt = Number(_prop?.['Rent Amount']||0);
+    if (_rentAmt > 0) {
+      for (const {month, year} of form.selectedMonths) {
+        const alreadyPaid = data.rent
+          .filter(r=>r['Property ID']===form['Property ID']&&r.Month===month&&String(r.Year)===String(year)&&(r.Status==='Paid'||r.Status==='Partial'))
+          .reduce((s,r)=>s+Number(r.Amount||0),0);
+        const remaining = _rentAmt - alreadyPaid;
+        if (Number(form.perMonthAmount) > remaining) {
+          alert(`Cannot exceed rent for ${month} ${year}.\nRent: ₹${_rentAmt.toLocaleString('en-IN')}\nAlready recorded: ₹${alreadyPaid.toLocaleString('en-IN')}\nMax you can add: ₹${Math.max(0,remaining).toLocaleString('en-IN')}`);
+          return;
+        }
+      }
+    }
+    setSaving(true);
+    try {
+      const tenant = data.tenants.find(t => t['Property ID']===form['Property ID'] && t.Status==='Active');
+      // Create one row per month
+      for (const {month, year} of form.selectedMonths) {
+        await appendRow('Rent', [
+          `R${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+          form['Property ID'], tenant?.ID||'',
+          month, year,
+          form.perMonthAmount,
+          form['Paid Date'], form.Status,
+          form.Notes + (form.selectedMonths.length>1 ? ` [Bulk payment: ${form.selectedMonths.length} months]` : ''),
+          form.paymentMethod||'Cash'
+        ]);
+      }
+      // Prepare receipt data
+      const prop = data.properties.find(p=>p.ID===form['Property ID']);
+      const receiptData = {
+        receiptId: `R${Date.now()}`,
+        tenantName: tenant?.Name || 'Tenant',
+        phone: tenant?.Phone || '',
+        address: prop?.Address || prop?.Name || '',
+        months: form.selectedMonths,
+        paidDate: new Date(form['Paid Date']).toLocaleDateString('en-IN'),
+        paymentMethod: form.paymentMethod,
+        totalAmount: form.totalAmount || (form.selectedMonths.length * Number(form.perMonthAmount)),
+        perMonthAmount: form.perMonthAmount,
+      };
+      setMode(null);
+      onRefresh();
+      if (withReceipt) setReceipt(receiptData);
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const handleEditSave = async () => {
+    if (!editForm['Property ID']||!editForm.Amount) { alert('Property and amount required.'); return; }
+    const _eProp = data.properties.find(p=>p.ID===editForm['Property ID']);
+    const _eRentAmt = Number(_eProp?.['Rent Amount']||0);
+    if (_eRentAmt > 0) {
+      const alreadyPaid = data.rent
+        .filter(r=>r['Property ID']===editForm['Property ID']&&r.Month===editForm.Month&&String(r.Year)===String(editForm.Year)&&r.ID!==mode.id&&(r.Status==='Paid'||r.Status==='Partial'))
+        .reduce((s,r)=>s+Number(r.Amount||0),0);
+      const remaining = _eRentAmt - alreadyPaid;
+      if (Number(editForm.Amount) > remaining) {
+        alert(`Cannot exceed rent for ${editForm.Month} ${editForm.Year}.\nRent: ₹${_eRentAmt.toLocaleString('en-IN')}\nOther entries: ₹${alreadyPaid.toLocaleString('en-IN')}\nMax allowed: ₹${Math.max(0,remaining).toLocaleString('en-IN')}`);
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      const tenant = data.tenants.find(t=>t['Property ID']===editForm['Property ID']&&t.Status==='Active');
+      await updateRow('Rent', mode.editing, [mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year, editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes, editForm.paymentMethod||'Cash'], 10);
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const showReceiptForRow = (r) => {
+    const prop   = data.properties.find(p=>p.ID===r['Property ID']);
+    const tenant = data.tenants.find(t=>t.ID===r['Tenant ID']) || data.tenants.find(t=>t['Property ID']===r['Property ID']&&t.Status==='Active');
+    setReceipt({
+      receiptId: r.ID,
+      tenantName: tenant?.Name||'Tenant',
+      phone: tenant?.Phone||'',
+      address: prop?.Address||prop?.Name||'',
+      months: [{month:r.Month, year:r.Year}],
+      paidDate: r['Paid Date']||new Date().toLocaleDateString('en-IN'),
+      paymentMethod: r['Payment Method']||r.paymentMethod||'Cash',
+      totalAmount: r.Amount,
+      perMonthAmount: r.Amount,
+    });
+  };
+
+  // Build 12-month rolling grid for current+past year
+  const monthGrid = [];
+  for (const yr of [String(Number(curYear)-1), curYear]) {
+    for (const mo of MONTHS) { monthGrid.push({month:mo, year:yr}); }
+  }
+
+  const filtered = data.rent.filter(r=>r.Month===filterMonth && String(r.Year)===filterYear);
+  const total    = filtered.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+  const paidIds  = filtered.filter(r=>r.Status==='Paid').map(r=>r['Property ID']);
+  const notPaid  = data.properties.filter(p=>!paidIds.includes(p.ID)&&p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage');
+
+  return (
+    <div>
+      {receipt && <ReceiptModal receipt={receipt} onClose={()=>setReceipt(null)}/>}
+
+      <div className="section-row">
+        <h3>Rent</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Record Rent</button>
+      </div>
+
+      {/* ADD FORM — multi-month */}
+      {mode==='add' && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">Record Rent Payment</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={form['Property ID']} onChange={e=>{
+                const prop=data.properties.find(p=>p.ID===e.target.value);
+                const amt = prop?.['Rent Amount']||'';
+                const total2 = form.selectedMonths.length * Number(amt);
+                setForm(p=>({...p,'Property ID':e.target.value, perMonthAmount:amt, totalAmount:total2||''}));
+              }}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+              {/* Tenant confirmation strip */}
+              {form['Property ID'] && (()=>{
+                const t = data.tenants.find(t=>t['Property ID']===form['Property ID']&&t.Status==='Active');
+                return t
+                  ? <div style={{marginTop:6,padding:'8px 12px',background:'var(--green-light)',border:'1px solid rgba(16,185,129,.25)',borderRadius:6,display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+                      <span style={{fontSize:12,fontWeight:600,color:'var(--green)'}}>✓ Active Tenant</span>
+                      <span style={{fontSize:13,fontWeight:500,color:'var(--text-primary)'}}>{t.Name}</span>
+                      <span className="mono" style={{fontSize:13,color:'var(--text-secondary)'}}>{t.Phone}</span>
+                    </div>
+                  : <div style={{marginTop:6,padding:'8px 12px',background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:6,fontSize:12,color:'var(--red)'}}>
+                      ⚠️ No active tenant for this property
+                    </div>;
+              })()}
+            </div>
+            <div className="form-group"><label>Per Month Amount (₹) *</label>
+              <input type="number" value={form.perMonthAmount} onChange={e=>{
+                const amt=e.target.value;
+                const total2=form.selectedMonths.length*Number(amt||0);
+                setForm(p=>({...p,perMonthAmount:amt,totalAmount:total2||''}));
+              }}/>
+            </div>
+            <div className="form-group"><label>Paid Date</label><input type="date" value={form['Paid Date']} onChange={e=>f('Paid Date',e.target.value)}/></div>
+            <div className="form-group"><label>Status</label>
+              <select value={form.Status} onChange={e=>f('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
+            </div>
+            <div className="form-group"><label>Payment Method</label>
+              <select value={form.paymentMethod} onChange={e=>f('paymentMethod',e.target.value)}>
+                <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input placeholder="Optional notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+
+          {/* Month selector grid */}
+          <div style={{marginTop:16}}>
+            <div style={{fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>
+              Select Month(s) * &nbsp;
+              <span style={{fontWeight:400,color:'var(--text-muted)'}}>— tap multiple for bulk payment</span>
+            </div>
+            {(()=>{
+              const _gProp = data.properties.find(p=>p.ID===form['Property ID']);
+              const _gRent = Number(_gProp?.['Rent Amount']||0);
+              const _paidMap = {};
+              if (form['Property ID']) {
+                data.rent.filter(r=>r['Property ID']===form['Property ID']&&(r.Status==='Paid'||r.Status==='Partial'))
+                  .forEach(r=>{const k=`${r.Month}|${r.Year}`;_paidMap[k]=(_paidMap[k]||0)+Number(r.Amount||0);});
+              }
+              return <>
+                <div className="month-year-grid" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                  {[String(Number(curYear)-1), curYear].map(yr=>(
+                    <div key={yr}>
+                      <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:600}}>{yr}</div>
+                      <div className="month-grid">
+                        {MONTHS.map(mo=>{
+                          const sel=form.selectedMonths.find(m=>m.month===mo&&m.year===yr);
+                          const paid=_paidMap[`${mo}|${yr}`]||0;
+                          const isFull=_gRent>0&&paid>=_gRent;
+                          const isPartial=_gRent>0&&paid>0&&paid<_gRent;
+                          return <div key={mo}
+                            className={`month-chip ${sel?'selected':''}`}
+                            style={isFull?{opacity:.55,cursor:'not-allowed',background:'rgba(16,185,129,.12)',border:'1px solid var(--green)'}:isPartial?{border:'1px solid var(--gold)'}:{}}
+                            title={paid>0?`Paid: ₹${paid.toLocaleString('en-IN')}${_gRent?` | Remaining: ₹${Math.max(0,_gRent-paid).toLocaleString('en-IN')}`:''}`:''}
+                            onClick={()=>!isFull&&toggleMonth(mo,yr)}>
+                            <span>{mo.slice(0,3)}</span>
+                            {isPartial&&<span style={{display:'block',fontSize:8,lineHeight:1.2,color:'var(--gold)',marginTop:1}}>partial</span>}
+                            {isFull&&<span style={{display:'block',fontSize:8,lineHeight:1.2,color:'var(--green)',marginTop:1}}>✓ full</span>}
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {form.selectedMonths.length>0 && (()=>{
+                  const warnings = _gRent>0 ? form.selectedMonths.map(({month,year})=>{
+                    const paid=_paidMap[`${month}|${year}`]||0;
+                    return paid>0?{month,year,paid,remaining:_gRent-paid}:null;
+                  }).filter(Boolean) : [];
+                  return <>
+                    <div style={{marginTop:10,padding:'8px 14px',background:'var(--green-light)',borderRadius:6,fontSize:13,color:'var(--green)',fontWeight:500}}>
+                      {form.selectedMonths.length} month{form.selectedMonths.length>1?'s':''} selected
+                      {form.selectedMonths.length>1 && form.perMonthAmount ? ` — Total: ₹${(form.selectedMonths.length*Number(form.perMonthAmount)).toLocaleString('en-IN')}` : ''}
+                    </div>
+                    {warnings.map(w=>(
+                      <div key={`${w.month}|${w.year}`} style={{marginTop:6,padding:'6px 14px',background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',borderRadius:6,fontSize:12,color:'var(--gold)'}}>
+                        ⚠️ {w.month} {w.year}: ₹{w.paid.toLocaleString('en-IN')} already paid — ₹{Math.max(0,w.remaining).toLocaleString('en-IN')} remaining
+                      </div>
+                    ))}
+                  </>;
+                })()}
+              </>;
+            })()}
+          </div>
+
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={()=>handleSave(false)} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Save'}</button>
+            <button className="btn btn-primary" style={{background:'#25d366'}} onClick={()=>handleSave(true)} disabled={saving}>🧾 Save &amp; Generate Receipt</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT FORM — single month */}
+      {mode && mode.editing && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">Edit Rent Record</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={editForm['Property ID']} onChange={e=>ef('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Month</label>
+              <select value={editForm.Month} onChange={e=>ef('Month',e.target.value)}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+            </div>
+            <div className="form-group"><label>Year</label>
+              <select value={editForm.Year} onChange={e=>ef('Year',e.target.value)}>{YEARS.map(y=><option key={y}>{y}</option>)}</select>
+            </div>
+            <div className="form-group"><label>Amount (₹) *</label>
+              <input type="number" value={editForm.Amount} onChange={e=>ef('Amount',e.target.value)}/>
+              {editForm['Property ID'] && editForm.Month && editForm.Year && (()=>{
+                const _ep=data.properties.find(p=>p.ID===editForm['Property ID']);
+                const _er=Number(_ep?.['Rent Amount']||0);
+                if(!_er) return null;
+                const _oth=data.rent.filter(r=>r['Property ID']===editForm['Property ID']&&r.Month===editForm.Month&&String(r.Year)===String(editForm.Year)&&r.ID!==mode.id&&(r.Status==='Paid'||r.Status==='Partial')).reduce((s,r)=>s+Number(r.Amount||0),0);
+                const _rem=_er-_oth;
+                return <div style={{marginTop:5,fontSize:12,color:_oth>0?'var(--gold)':'var(--text-muted)'}}>
+                  Rent: ₹{_er.toLocaleString('en-IN')}{_oth>0?` | Other entries: ₹${_oth.toLocaleString('en-IN')} | Max: ₹${Math.max(0,_rem).toLocaleString('en-IN')}`:` | Max: ₹${_er.toLocaleString('en-IN')}`}
+                </div>;
+              })()}
+            </div>
+            <div className="form-group"><label>Paid Date</label><input type="date" value={editForm['Paid Date']} onChange={e=>ef('Paid Date',e.target.value)}/></div>
+            <div className="form-group"><label>Status</label>
+              <select value={editForm.Status} onChange={e=>ef('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
+            </div>
+            <div className="form-group"><label>Payment Method</label>
+              <select value={editForm.paymentMethod||'Cash'} onChange={e=>ef('paymentMethod',e.target.value)}>
+                <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input value={editForm.Notes} onChange={e=>ef('Notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleEditSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Update'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── VIEW TABS ── */}
+      <div className="tabs" style={{marginBottom:16}}>
+        <button className={`tab ${viewTab==='month'?'active':''}`} onClick={()=>setViewTab('month')}>📅 Month View</button>
+        <button className={`tab ${viewTab==='property'?'active':''}`} onClick={()=>setViewTab('property')}>🏠 Property View</button>
+      </div>
+
+      {/* ── MONTH VIEW ── */}
+      {viewTab==='month' && (<>
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,flex:'1 1 auto',minWidth:120}} value={filterMonth} onChange={e=>setFM(e.target.value)}>
+            {MONTHS.map(m=><option key={m}>{m}</option>)}
+          </select>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,minWidth:80}} value={filterYear} onChange={e=>setFY(e.target.value)}>
+            {YEARS.map(y=><option key={y}>{y}</option>)}
+          </select>
+          <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)',marginLeft:'auto',whiteSpace:'nowrap'}}>Collected: {fmtINR(total)}</div>
+        </div>
+        {notPaid.length>0 && (
+          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:13}}>
+            <span style={{color:'var(--red)',fontWeight:500}}>Pending: </span>
+            <span style={{color:'var(--text-secondary)'}}>{notPaid.map(p=>p.Name).join(', ')}</span>
+          </div>
+        )}
+        <div className="card">
+          {filtered.length===0 ? <div className="empty"><p>No rent records for {filterMonth} {filterYear}.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+            <tbody>{filtered.map(r=>{
+              const prop=data.properties.find(p=>p.ID===r['Property ID']);
+              const tenant=data.tenants.find(t=>t.ID===r['Tenant ID']);
+              return (<tr key={r.ID}>
+                <td className="name">{prop?prop.Name:r['Property ID']}</td>
+                <td>{tenant?tenant.Name:'—'}</td>
+                <td>{r.Month} {r.Year}</td>
+                <td className="mono">{fmtINR(r.Amount)}</td>
+                <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                <td style={{display:'flex',gap:4}}>
+                  <EditBtn onClick={()=>openEdit(r)}/>
+                  <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>showReceiptForRow(r)}>🧾</button>
+                </td>
+              </tr>);
+            })}</tbody>
+          </table></div>}
+        </div>
+      </>)}
+
+      {/* ── PROPERTY VIEW ── */}
+      {viewTab==='property' && (<>
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,minWidth:200}}
+            value={filterProp} onChange={e=>setFilterProp(e.target.value)}>
+            <option value="">— Select a property —</option>
+            {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+          </select>
+          {filterProp && (()=>{
+            const _lp = data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            return <div style={{marginLeft:'auto',display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+              {_lp && <div style={{fontSize:12,color:'var(--text-muted)'}}>Last paid: <span style={{color:'var(--gold)',fontWeight:600}}>{_lp.Month} {_lp.Year}</span></div>}
+              <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>Total collected: {fmtINR(data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0))}</div>
+            </div>;
+          })()}
+        </div>
+
+        {!filterProp && <div className="card"><div className="empty"><p>Select a property above to see its rent history.</p></div></div>}
+
+        {filterProp && (()=>{
+          const prop    = data.properties.find(p=>p.ID===filterProp);
+          const tenant  = data.tenants.find(t=>t['Property ID']===filterProp&&t.Status==='Active');
+          const propRent= data.rent.filter(r=>r['Property ID']===filterProp).sort((a,b)=>{
+            const ya=Number(a.Year),yb=Number(b.Year);
+            if(ya!==yb) return yb-ya;
+            return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
+          });
+          const totalPaid  = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+          const lastPaid   = propRent.find(r=>r.Status==='Paid');
+          return (<>
+            {/* Property summary card */}
+            <div className="card" style={{marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:16}}>
+                <div>
+                  <div className="stat-label">Property</div>
+                  <div style={{fontWeight:600,fontSize:15,marginTop:4}}>{prop?.Name}</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{prop?.Address}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Current Tenant</div>
+                  <div style={{fontWeight:500,fontSize:14,marginTop:4}}>{tenant?tenant.Name:<span style={{color:'var(--text-muted)'}}>Vacant</span>}</div>
+                  {tenant&&<div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{tenant.Phone}</div>}
+                </div>
+                <div>
+                  <div className="stat-label">Monthly Rent</div>
+                  <div className="mono" style={{fontSize:18,color:'var(--green)',marginTop:4}}>{fmtINR(prop?.['Rent Amount'])}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Total Collected</div>
+                  <div className="mono" style={{fontSize:18,color:'var(--green)',marginTop:4}}>{fmtINR(totalPaid)}</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{propRent.length} record{propRent.length!==1?'s':''}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Last Payment</div>
+                  <div style={{fontSize:13,marginTop:4}}>{lastPaid?`${lastPaid.Month} ${lastPaid.Year}`:<span style={{color:'var(--text-muted)'}}>—</span>}</div>
+                  {lastPaid&&<div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{fmtINR(lastPaid.Amount)}</div>}
+                </div>
+                <div>
+                  <div className="stat-label">Last Rent Revision</div>
+                  <div style={{fontSize:13,color:'var(--gold)',marginTop:4}}>{tenant?.['Last Rent Revision']||<span style={{color:'var(--text-muted)'}}>—</span>}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Full rent history */}
+            <div className="card">
+              <div className="card-title">Rent History</div>
+              {propRent.length===0
+                ? <div className="empty"><p>No rent records for this property.</p></div>
+                : <div className="table-wrap"><table>
+                    <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+                    <tbody>{propRent.map(r=>(
+                      <tr key={r.ID}>
+                        <td className="name">{r.Month}</td>
+                        <td className="mono">{r.Year}</td>
+                        <td className="mono">{fmtINR(r.Amount)}</td>
+                        <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                        <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                        <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                        <td style={{color:'var(--text-muted)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                        <td style={{display:'flex',gap:4}}>
+                          <EditBtn onClick={()=>openEdit(r)}/>
+                          <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>showReceiptForRow(r)}>🧾</button>
+                        </td>
+                      </tr>
+                    ))}</tbody>
+                  </table></div>
+              }
+            </div>
+          </>);
+        })()}
+      </>)}
+    </div>
+  );
+}
+
+
+// ── PROPERTY RENT CARD (used in Rent → Property View) ───────────────────────
+function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
+  const [open,        setOpen]        = useState(false);
+  const [tenantOpen,  setTenantOpen]  = useState(false);
+  const [utilityOpen, setUtilityOpen] = useState(false);
+  const [rentOpen,    setRentOpen]    = useState(true);
+
+  const tenant     = data.tenants.find(t=>t['Property ID']===prop.ID&&t.Status==='Active');
+  const allTenants = data.tenants.filter(t=>t['Property ID']===prop.ID);
+  const utility    = data.utilities.find(u=>u['Property ID']===prop.ID)||{};
+  const propRent   = data.rent.filter(r=>r['Property ID']===prop.ID).sort((a,b)=>{
+    const ya=Number(a.Year),yb=Number(b.Year);
+    if(ya!==yb) return yb-ya;
+    return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
+  });
+  const totalPaid = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+  const lastPaid  = propRent.find(r=>r.Status==='Paid');
+  const occColor  = prop.Occupancy==='Vacant'?'badge-gold':prop.Occupancy==='NotApplicable'||prop.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+  const occIcon   = prop.Occupancy==='Vacant'?'🔓':prop.Occupancy==='OwnUsage'?'🏡':prop.Occupancy==='NotApplicable'?'📋':'🏠';
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background:open?'var(--surface-2)':'var(--surface)'}}
+        onClick={()=>setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{occIcon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{prop.Name}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{prop.Address||prop.Type}</div>
+          </div>
+        </div>
+        <div className="prop-card-right" style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(prop['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+          </div>
+          <span className={`badge ${occColor} prop-occ-badge-header`}>{prop.Occupancy||'Occupied'}</span>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'0 18px 18px'}}>
+        {/* Stats strip */}
+        <div style={{display:'flex',gap:24,padding:'14px 0 12px',borderBottom:'1px solid var(--border)',flexWrap:'wrap',alignItems:'center'}}>
+          <div><div className="stat-label">Total Collected</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:2}}>{fmtINR(totalPaid)}</div></div>
+          <div><div className="stat-label">Rent Records</div><div style={{fontSize:16,marginTop:2}}>{propRent.length}</div></div>
+          <div><div className="stat-label">Last Payment</div><div style={{fontSize:13,marginTop:2}}>{lastPaid?`${lastPaid.Month} ${lastPaid.Year}`:'—'}</div></div>
+          <div><div className="stat-label">Last Revision</div><div style={{fontSize:13,color:'var(--gold)',marginTop:2}}>{tenant?.['Last Rent Revision']||'—'}</div></div>
+          <div style={{marginLeft:'auto'}}>
+            <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation();onRecordRent();}}>+ Record Rent</button>
+          </div>
+        </div>
+
+        {/* Tenant collapsible */}
+        <CollapsibleSection title={`👤 Tenant Details (${allTenants.filter(t=>t.Status==='Active').length} active)`} defaultOpen={true}>
+          {allTenants.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
+            : allTenants.map(t=>(
+              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
+                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
+              </div>
+            ))
+          }
+        </CollapsibleSection>
+
+        {/* Utility collapsible */}
+        <CollapsibleSection title="⚡ Utility Numbers" defaultOpen={true}>
+          <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{utility['Electricity Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{utility['Property Tax Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{utility['Property Tax Value']?fmtINR(utility['Property Tax Value']):'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{utility['Water Bill Number']||'—'}</div></div>
+            {utility['Notes']&&<div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{utility['Notes']}</div></div>}
+          </div>
+        </CollapsibleSection>
+
+        {/* Rent history collapsible */}
+        <CollapsibleSection title={`💰 Rent History (${propRent.length} records)`} defaultOpen={true}>
+          {propRent.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No rent records yet.</div>
+            : <div className="table-wrap"><table>
+                <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+                <tbody>{propRent.map(r=>(
+                  <tr key={r.ID}>
+                    <td className="name">{r.Month}</td>
+                    <td className="mono">{r.Year}</td>
+                    <td className="mono">{fmtINR(r.Amount)}</td>
+                    <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                    <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                    <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                    <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                    <td style={{display:'flex',gap:4}}>
+                      <EditBtn onClick={()=>onEditRent(r)}/>
+                      <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>onReceipt(r)}>🧾</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+          }
+        </CollapsibleSection>
+      </div>}
+    </div>
+  );
+}
+
+// ── MAINTENANCE ───────────────────────────────────────────────────────────────
+function Maintenance({ data, onRefresh }) {
+  const [mode, setMode]     = useState(null);
+  const [saving, setSaving] = useState(false);
+  const blank = { 'Property ID':'', Date: new Date().toISOString().split('T')[0], Description:'', Amount:'', Vendor:'', Category:'Repair' };
+  const [form, setForm]     = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (m) => { setForm({...blank,...m}); setMode({editing:m._row, id:m.ID}); };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form['Property ID']||!form.Description||!form.Amount) { alert('Property, description and amount required.'); return; }
+    setSaving(true);
+    try {
+      if (mode==='add') {
+        await appendRow('Maintenance', [`M${Date.now()}`, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category]);
+      } else {
+        await updateRow('Maintenance', mode.editing, [mode.id, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category], 7);
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const total = data.maintenance.reduce((s,m)=>s+Number(m.Amount||0),0);
+
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Maintenance</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Record</button>
+      </div>
+
+      {mode!==null && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{mode==='add'?'Maintenance Record':'Edit Record'}</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Date</label><input type="date" value={form.Date} onChange={e=>f('Date',e.target.value)}/></div>
+            <div className="form-group"><label>Category</label>
+              <select value={form.Category} onChange={e=>f('Category',e.target.value)}>
+                <option>Repair</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Cleaning</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Amount (₹) *</label><input type="number" value={form.Amount} onChange={e=>f('Amount',e.target.value)}/></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description *</label><input value={form.Description} onChange={e=>f('Description',e.target.value)}/></div>
+            <div className="form-group"><label>Vendor / Person</label><input value={form.Vendor} onChange={e=>f('Vendor',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:mode==='add'?'Save':'Update'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{marginBottom:16}}><div className="stat-card" style={{display:'inline-block',padding:'12px 20px'}}><div className="stat-label">Total Spent</div><div className="stat-value gold" style={{fontSize:20}}>{fmtINR(total)}</div></div></div>
+
+      <div className="card">
+        {data.maintenance.length===0 ? <div className="empty"><p>No maintenance records.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Property</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Vendor</th><th></th></tr></thead>
+          <tbody>{[...data.maintenance].reverse().map(m => {
+            const prop=data.properties.find(p=>p.ID===m['Property ID']);
+            return (<tr key={m.ID}>
+              <td className="name">{prop?prop.Name:m['Property ID']}</td>
+              <td style={{color:'var(--text-muted)'}}>{m.Date}</td>
+              <td><span className="badge badge-blue">{m.Category}</span></td>
+              <td>{m.Description}</td>
+              <td className="mono">{fmtINR(m.Amount)}</td>
+              <td style={{color:'var(--text-muted)'}}>{m.Vendor}</td>
+              <td><EditBtn onClick={()=>openEdit(m)}/></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── UTILITIES (now property-level, fully integrated into Properties) ──────────
+// Utilities is now embedded in the Properties page. This page shows a summary view.
+function Utilities({ data, onRefresh }) {
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Utility Numbers</h3>
+        <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit via Properties → ✏️</span>
+      </div>
+      <div className="gap-12">
+        {data.properties.length===0 && <div className="card"><div className="empty"><p>Add properties first.</p></div></div>}
+        {data.properties.map(p => {
+          const u = data.utilities.find(u=>u['Property ID']===p.ID)||{};
+          return (
+            <div className="card" key={p.ID}>
+              <div style={{fontWeight:500,marginBottom:10}}>{p.Name} <span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green'}`} style={{marginLeft:8}}>{p.Occupancy||'Occupied'}</span></div>
+              <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Electricity</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Electricity Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax No.</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Property Tax Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax Value</div><div className="mono" style={{fontSize:13,color:'var(--gold)',marginTop:2}}>{u['Property Tax Value'] ? fmtINR(u['Property Tax Value']) : <span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Water Bill</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Water Bill Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+              </div>
+              {u['Notes'] && <div style={{marginTop:10,fontSize:12,color:'var(--text-muted)',padding:'6px 10px',background:'rgba(255,255,255,.03)',borderRadius:5}}>📝 {u['Notes']}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── NLP QUERY ────────────────────────────────────────────────────────────────
+function NLPQuery({ data }) {
+  const [messages, setMessages] = useState([
+    { role:'ai', text:"Hi! Ask me anything about your properties.\n• How much rent was collected in May?\n• Which properties haven't paid June rent?\n• Give me the phone number of tenant at [property]?\n• Total maintenance spent this year?\n• Which tenants are due for a rent revision?" }
+  ]);
+  const [input, setInput]   = useState('');
+  const [loading, setLoad]  = useState(false);
+  const endRef = useRef();
+  const suggestions = [
+    'How much rent collected this month?',
+    'Which properties have not paid this month?',
+    'List all active tenants with phone numbers',
+    'Total maintenance spent this year?',
+    'Which tenants are due for rent revision?',
+    'Show advance amounts for all tenants',
+  ];
+
+  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
+
+  const ask = async (q) => {
+    if (!q.trim()||loading) return;
+    setMessages(m=>[...m,{role:'user',text:q}]); setInput(''); setLoad(true);
+    try {
+      const answer = await askClaude(q, data);
+      setMessages(m=>[...m,{role:'ai',text:answer}]);
+    } catch(e) { setMessages(m=>[...m,{role:'ai',text:'Error: '+e.message}]); }
+    setLoad(false);
+  };
+
+  return (
+    <div>
+      <div className="section-row"><h3>Ask a Question</h3><span style={{fontSize:12,color:'var(--text-muted)'}}>Powered by Gemini AI (free)</span></div>
+      <div className="nlp-panel">
+        <div className="nlp-messages">
+          {messages.map((m,i)=>(
+            <div className="msg" key={i}>
+              <div className={`msg-avatar ${m.role}`}>{m.role==='user'?'You':'AI'}</div>
+              <div className={`msg-bubble ${m.role}`} style={{whiteSpace:'pre-wrap'}}>{m.text}</div>
+            </div>
+          ))}
+          {loading && <div className="msg"><div className="msg-avatar ai">AI</div><div className="msg-bubble" style={{color:'var(--text-muted)'}}>Thinking...</div></div>}
+          <div ref={endRef}/>
+        </div>
+        <div className="nlp-suggestions">{suggestions.map(s=><button key={s} className="nlp-chip" onClick={()=>ask(s)}>{s}</button>)}</div>
+        <div className="nlp-input-row">
+          <textarea className="nlp-input" placeholder="Ask anything about your properties..." value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input);}}}
+          />
+          <button className="btn btn-primary" onClick={()=>ask(input)} disabled={loading||!input.trim()}><Icon name="send" size={14}/></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── PIN SCREEN ───────────────────────────────────────────────────────────────
+// If URL contains ?cfg=... load that encrypted blob into localStorage automatically
+(function() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const blob = params.get('cfg');
+    if (blob) {
+      localStorage.setItem(STORE_KEY, decodeURIComponent(blob));
+      // Clean URL so the blob isn't visible after load
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e) {}
+})();
+
+function PinScreen({ onUnlock }) {
+  const isFirstTime = !hasEncryptedConfig();
+  const [mode, setMode] = useState(isFirstTime ? 'setup' : 'unlock');
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [form, setForm] = useState({ spreadsheetId: '', clientId: '', geminiKey: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [shareCode, setShareCode] = useState('');
+  const [showShare, setShowShare] = useState(false);
+  const [importCode, setImportCode] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const PIN_LEN = 4;
+
+  const handleKey = async (k) => {
+    if (loading) return;
+    setError('');
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+
+    if (mode === 'unlock') {
+      setLoading(true);
+      const cfg = await loadConfig(next);
+      if (cfg) {
+        setRuntimeConfig(cfg);
+        onUnlock();
+      } else {
+        setError('Wrong PIN — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+      setLoading(false);
+    } else if (mode === 'confirm') {
+      if (next === confirmPin) {
+        setLoading(true);
+        await persistConfig(next, form);
+        setRuntimeConfig(form);
+        // Generate share code immediately after setup
+        const blob = localStorage.getItem(STORE_KEY);
+        if (blob) setShareCode(blob);
+        setShowShare(true);
+        setLoading(false);
+        // Don't call onUnlock yet — show share screen first
+      } else {
+        setError('PINs do not match — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+    }
+  };
+
+  const handleSetupNext = () => {
+    if (!form.spreadsheetId || !form.clientId) { setError('Sheet ID and Client ID are required.'); return; }
+    setError('');
+    setMode('choose-pin');
+    setPin('');
+  };
+
+  const handleChoosePin = async (k) => {
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+    setConfirmPin(next);
+    setPin('');
+    setMode('confirm');
+  };
+
+  const handleImport = () => {
+    const code = importCode.trim();
+    if (!code) { setError('Paste the share code first.'); return; }
+    try {
+      localStorage.setItem(STORE_KEY, code);
+      setMode('unlock');
+      setPin('');
+      setError('');
+      setShowImport(false);
+    } catch(e) { setError('Invalid code — ask the owner to share again.'); }
+  };
+
+  const copyShareLink = () => {
+    const blob = localStorage.getItem(STORE_KEY);
+    if (!blob) return;
+    const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+    navigator.clipboard.writeText(url).then(()=>alert('Share link copied!\n\nSend this to your brother. When he opens it, the app auto-loads — he just needs to enter the PIN.'));
+  };
+
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','del'];
+
+  // Share screen — shown after first setup
+  if (showShare) return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo" style={{background:'var(--green)'}}>✓</div>
+        <div className="pin-title">Setup Complete!</div>
+        <div className="pin-sub">Share access with your brother by sending him the share link. He opens it, enters the PIN, and he's in — no re-entering keys.</div>
+        <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',marginBottom:10}} onClick={copyShareLink}>
+          📋 Copy Share Link for Brother
+        </button>
+        <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:16,lineHeight:1.6,padding:'8px',background:'rgba(0,0,0,.2)',borderRadius:6}}>
+          The link contains your encrypted config. Only the PIN can decrypt it — safe to share over WhatsApp.
+        </div>
+        <button className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}} onClick={()=>{ setRuntimeConfig(form); onUnlock(); }}>
+          Enter App →
+        </button>
+      </div>
+    </div>
+  );
+
+  if (mode === 'setup') return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+        <div className="pin-title">First-time Setup</div>
+        <div className="pin-sub">Enter your keys below. They'll be encrypted with a PIN — never stored in plain text.</div>
+        <div className="pin-setup-form">
+          <div className="form-group"><label>Google Sheet ID</label><input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={form.spreadsheetId} onChange={e => setForm({...form, spreadsheetId: e.target.value})}/></div>
+          <div className="form-group"><label>Google OAuth Client ID</label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
+          <div className="form-group">
+            <label>AI API Key — <span style={{color:'var(--text-muted)',fontWeight:400}}>optional</span></label>
+            <input type="password" placeholder="sk-ant-... (Claude) or AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
+          </div>
+          {error && <div className="pin-error">{error}</div>}
+          <button className="btn btn-primary" style={{width:'100%',marginTop:8,justifyContent:'center'}} onClick={handleSetupNext}>Next — Choose PIN →</button>
+          <div style={{textAlign:'center',marginTop:12}}>
+            <span className="pin-toggle" onClick={()=>setShowImport(o=>!o)}>Already have a share code? Import it</span>
+          </div>
+          {showImport && <div style={{marginTop:10}}>
+            <div className="form-group"><label>Paste Share Code</label><textarea style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:6,padding:'8px',color:'var(--text-primary)',fontSize:11,width:'100%',height:80,fontFamily:'monospace'}} value={importCode} onChange={e=>setImportCode(e.target.value)} placeholder="Paste the share code here..."/></div>
+            <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} onClick={handleImport}>Import & Enter PIN</button>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+
+  const modeLabel    = mode === 'choose-pin' ? 'Choose a 4-digit PIN' : mode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN';
+  const modeSubLabel = mode === 'choose-pin' ? 'You and your brother will use this PIN' : mode === 'confirm' ? 'Enter the same PIN again to confirm' : 'Keys are encrypted — PIN never leaves your device';
+
+  return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+        <div className="pin-title">{modeLabel}</div>
+        <div className="pin-sub">{modeSubLabel}</div>
+        <div className="pin-dots">
+          {Array.from({length: PIN_LEN}).map((_, i) => (
+            <div key={i} className={`pin-dot ${i < pin.length ? (error ? 'error' : 'filled') : ''}`}/>
+          ))}
+        </div>
+        <div className="pin-keypad">
+          {keys.map((k, i) => k === '' ? <div key={i}/> : (
+            <button key={i} className={`pin-key ${k === 'del' ? 'del' : ''}`}
+              onClick={() => mode === 'choose-pin' ? handleChoosePin(k) : handleKey(k)}
+              disabled={loading}
+            >{k === 'del' ? '⌫' : k}</button>
+          ))}
+        </div>
+        <div className="pin-error">{error}</div>
+        {mode === 'unlock' && (<>
+          <span className="pin-toggle" onClick={copyShareLink}>📋 Get share link (for new browser)</span>
+          <span className="pin-toggle" style={{marginTop:6}} onClick={() => { setMode('setup'); setPin(''); localStorage.removeItem(STORE_KEY); }}>
+            Reset &amp; re-enter keys
+          </span>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// Setup Page
+function Setup({ onChangePIN }) {
+  const cfg = getConfig();
+  const [showChange, setShowChange] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+
+  const handleChangePIN = async () => {
+    if (!oldPin || !newPin || !confirmPin) { setErr('Fill all fields.'); return; }
+    if (newPin !== confirmPin) { setErr('New PINs do not match.'); return; }
+    if (newPin.length < 4) { setErr('PIN must be 4 digits.'); return; }
+    const existing = await loadConfig(oldPin);
+    if (!existing) { setErr('Current PIN is incorrect.'); return; }
+    await persistConfig(newPin, existing);
+    setMsg('PIN changed successfully!'); setErr(''); setOldPin(''); setNewPin(''); setConfirmPin(''); setShowChange(false);
+  };
+
+  return (
+    <div>
+      <div className="section-row"><h3>Setup</h3></div>
+
+      <div className="setup-step">
+        <div className="setup-num done"><Icon name="check" size={14}/></div>
+        <div className="setup-text">
+          <h3>Keys stored encrypted ✓</h3>
+          <p>Your Sheet ID, Client ID, and AI key (Claude or Gemini) are encrypted with AES-256 using your PIN. Never stored in plain text, never in source code. Safe with a public repo.</p>
+          <div style={{marginTop:10,display:'flex',gap:12,flexWrap:'wrap'}}>
+            <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>🔒 AES-256-GCM encrypted</div>
+            <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>✓ Safe with public repo</div>
+            <div style={{background:'var(--green-light)',border:'1px solid rgba(16,185,129,.2)',borderRadius:6,padding:'8px 14px',fontSize:12,color:'var(--green)'}}>📱 Works on any browser</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num" style={{background:'var(--accent-light)',color:'var(--accent)'}}>2</div>
+        <div className="setup-text">
+          <h3>Share access with your brother</h3>
+          <p>1. <strong>Google Sheet:</strong> Open your Sheet → Share → add his Gmail → Editor access<br/>
+          2. <strong>Google Cloud Console:</strong> OAuth consent screen → Test users → Add his Gmail<br/>
+          3. Send him the share link below — he opens it, enters the PIN, signs in with Google. Done.</p>
+          <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={()=>{
+            const blob = localStorage.getItem(STORE_KEY);
+            if (!blob) { alert('No config found — complete setup first.'); return; }
+            const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+            navigator.clipboard.writeText(url).then(()=>alert('Share link copied!\n\nSend this to your brother over WhatsApp. When he opens it, the app auto-loads and he just needs to enter the PIN.'));
+          }}>📋 Copy Share Link</button>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.accessToken ? 'done' : ''}`}>{cfg.accessToken ? <Icon name="check" size={14}/> : '3'}</div>
+        <div className="setup-text">
+          <h3>Sign in with Google</h3>
+          <p>Authorize access to your Google Sheet. You'll be redirected to Google and back automatically.</p>
+          <div className="config-status">
+            <div className={`dot ${cfg.accessToken ? 'dot-green' : 'dot-red'}`}/>
+            <span style={{fontSize:12,color:cfg.accessToken?'var(--green)':'var(--red)'}}>{cfg.accessToken ? 'Signed in — Google Sheets access active' : 'Not signed in'}</span>
+          </div>
+          <button className="btn btn-primary" style={{marginTop:10}} onClick={signInWithGoogle}>Sign in with Google →</button>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num">4</div>
+        <div className="setup-text">
+          <h3>Change PIN</h3>
+          <p>Change your shared PIN at any time. All encrypted data will be re-encrypted with the new PIN.</p>
+          {!showChange
+            ? <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={() => setShowChange(true)}>Change PIN</button>
+            : <div style={{marginTop:12}}>
+                <div className="form-grid" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
+                  <div className="form-group"><label>Current PIN</label><input type="password" maxLength={4} placeholder="••••" value={oldPin} onChange={e => setOldPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>New PIN</label><input type="password" maxLength={4} placeholder="••••" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>Confirm New PIN</label><input type="password" maxLength={4} placeholder="••••" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g,''))}/></div>
+                </div>
+                {err && <div style={{fontSize:12,color:'var(--red)',marginTop:6}}>{err}</div>}
+                {msg && <div style={{fontSize:12,color:'var(--green)',marginTop:6}}>{msg}</div>}
+                <div className="btn-row">
+                  <button className="btn btn-primary" onClick={handleChangePIN}>Save New PIN</button>
+                  <button className="btn btn-secondary" onClick={() => { setShowChange(false); setErr(''); }}>Cancel</button>
+                </div>
+              </div>
+          }
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.geminiKey?'done':''}`}>{cfg.geminiKey?<Icon name="check" size={14}/>:'AI'}</div>
+        <div className="setup-text">
+          <h3>AI API Key {cfg.geminiKey ? <span style={{fontSize:12,color:'var(--green)',fontWeight:400}}>✓ Set</span> : <span style={{fontSize:12,color:'var(--gold)',fontWeight:400}}>Not set — Ask AI won't work</span>}</h3>
+          <p>Paste a Claude key (<code>sk-ant-...</code>) from <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> or a Gemini key (<code>AIza...</code>) from <a href="https://aistudio.google.com/apikey" target="_blank" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a> on a new project with no billing.</p>
+          {(()=>{
+            const [aiKey, setAiKey] = React.useState('');
+            const [aiMsg, setAiMsg] = React.useState('');
+            const saveAiKey = async () => {
+              if (!aiKey.trim()) { setAiMsg('Paste a key first.'); return; }
+              const existing = cfg;
+              const newCfg = { spreadsheetId: existing.spreadsheetId, clientId: existing.clientId, geminiKey: aiKey.trim() };
+              setRuntimeConfig(newCfg);
+              // Re-encrypt with existing PIN — ask user
+              const pin = window.prompt('Enter your PIN to save the new AI key:');
+              if (!pin) { setAiMsg('Cancelled.'); return; }
+              const check = await loadConfig(pin);
+              if (!check) { setAiMsg('Wrong PIN.'); return; }
+              await persistConfig(pin, newCfg);
+              setAiMsg('✓ AI key saved!');
+              setAiKey('');
+            };
+            return (<div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+              <div className="form-group" style={{flex:1,minWidth:200,marginBottom:0}}>
+                <input type="password" placeholder="sk-ant-... or AIzaSy..." value={aiKey} onChange={e=>setAiKey(e.target.value)}/>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={saveAiKey}>Save Key</button>
+              {aiMsg && <span style={{fontSize:12,color:aiMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{aiMsg}</span>}
+            </div>);
+          })()}
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num" style={{background:'var(--red-light)',color:'var(--red)'}}>!</div>
+        <div className="setup-text">
+          <h3>Clear Cache &amp; Reset PIN</h3>
+          <p>Clears your encrypted keys from this browser's localStorage. You'll be asked to re-enter your keys and choose a new PIN on next load. <strong>Your Google Sheet data is NOT affected.</strong></p>
+          <button className="btn btn-danger btn-sm" style={{marginTop:10}} onClick={()=>{
+            if(window.confirm('Clear all cached keys and sign out? Your Sheet data is safe.')) {
+              localStorage.clear();
+              window.location.reload();
+            }
+          }}>Clear Cache &amp; Reset PIN</button>
+        </div>
+      </div>
+
+      <div style={{marginTop:16,padding:'14px 16px',background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:8,fontSize:12,color:'var(--text-secondary)',lineHeight:1.7}}>
+        <strong style={{color:'var(--green)'}}>Your data is safe:</strong> Everything is stored in your own Google Sheet. Keys are AES-256 encrypted in localStorage. No server involved.
+      </div>
+    </div>
+  );
+}
+
+// ── ROOT APP ──────────────────────────────────────────────────────────────────
+function App() {
+  const [unlocked, setUnlocked] = useState(false);
+  const [page, setPage] = useState('dashboard');
+  const [rentTarget, setRentTarget] = useState(null);
+  const [data, setData] = useState({ properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
+  const [loading, setLoading] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  // Handle OAuth token in URL hash before rendering PIN screen
+  useEffect(() => { parseTokenFromHash(); }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    const cfg = getConfig();
+    setAuthed(!!(cfg.accessToken && cfg.spreadsheetId));
+  }, [unlocked]);
+
+  const loadData = useCallback(async () => {
+    if (!unlocked) return;
+    const cfg = getConfig();
+    if (!cfg.accessToken || !cfg.spreadsheetId) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      await initSheets();
+      const [properties, tenants, rent, maintenance, utilities] = await Promise.all([
+        readSheet('Properties'), readSheet('Tenants'), readSheet('Rent'), readSheet('Maintenance'), readSheet('Utilities'),
+      ]);
+      console.log('Loaded — Properties:', properties.length, 'Tenants:', tenants.length, 'Rent:', rent.length);
+      setData({ properties, tenants, rent, maintenance, utilities });
+      setAuthed(true);
+    } catch (e) {
+      console.error('loadData error:', e);
+      if (e.message.includes('Session expired') || e.message.includes('Not authenticated')) {
+        setAuthed(false);
+        setLoadError('Session expired — please sign in again in Setup.');
+      } else {
+        setLoadError('Load error: ' + e.message);
+      }
+    }
+    setLoading(false);
+  }, [unlocked]);
+
+  useEffect(() => { if (unlocked) loadData(); }, [loadData, unlocked]);
+
+  const nav = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
+    { id: 'properties', label: 'Properties', icon: 'home', section: 'Manage' },
+    { id: 'tenants', label: 'Tenants', icon: 'users', section: 'Manage' },
+    { id: 'rent', label: 'Rent', icon: 'currency', section: 'Manage' },
+    { id: 'maintenance', label: 'Maintenance', icon: 'tool', section: 'Manage' },
+    { id: 'utilities', label: 'Utilities', icon: 'zap', section: 'Manage' },
+    { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
+    { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
+  ];
+
+  const sections = [...new Set(nav.map(n => n.section))];
+  const titles = { dashboard: ['Dashboard', 'Overview of all your properties'], properties: ['Properties', 'Add and view your properties'], tenants: ['Tenants', 'Manage tenant details'], rent: ['Rent', 'Track monthly rent payments'], maintenance: ['Maintenance', 'Log maintenance expenses'], utilities: ['Utilities', 'Electricity, tax & water numbers'], nlp: ['Ask AI', 'Natural language queries about your data'], setup: ['Setup', 'Configure Google Sheets and API keys'] };
+  const [title, subtitle] = titles[page] || ['', ''];
+
+  const renderPage = () => {
+    if (!authed && page !== 'setup') {
+      return (
+        <div className="card" style={{maxWidth:480,margin:'40px auto',textAlign:'center',padding:'32px'}}>
+          <div style={{fontSize:32,marginBottom:16}}>🏠</div>
+          <h2 style={{marginBottom:8,fontSize:16}}>Welcome to Property Manager</h2>
+          <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20,lineHeight:1.6}}>Connect your Google Sheet to get started. All your data will be stored securely in your own Google Sheet.</p>
+          <button className="btn btn-primary" onClick={() => setPage('setup')}>Start Setup →</button>
+        </div>
+      );
+    }
+    switch (page) {
+      case 'dashboard': return <Dashboard data={data} loading={loading}/>;
+      case 'properties': return <Properties data={data} onRefresh={loadData} onGoToRent={(propId)=>{ setRentTarget(propId); setPage('rent'); }}/>;
+      case 'tenants': return <Tenants data={data} onRefresh={loadData}/>;
+      case 'rent': return <Rent data={data} onRefresh={loadData} initialPropId={rentTarget} onClearTarget={()=>setRentTarget(null)}/>;
+      case 'maintenance': return <Maintenance data={data} onRefresh={loadData}/>;
+      case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
+      case 'nlp': return <NLPQuery data={data}/>;
+      case 'setup': return <Setup onChangePIN={() => {}} />;
+      default: return null;
+    }
+  };
+
+  if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />;
+
+  return (
+    <>
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="logo-mark"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="white" strokeWidth="1.5"/></svg></div>
+          <h1>Property Manager</h1>
+          <p>Your portfolio</p>
+        </div>
+        <nav className="sidebar-nav">
+          {sections.map(section => (
+            <div className="nav-section" key={section}>
+              <div className="nav-section-label">{section}</div>
+              {nav.filter(n => n.section === section).map(n => (
+                <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => setPage(n.id)}>
+                  <Icon name={n.icon} size={16}/>
+                  <span>{n.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          {!authed && <div className="setup-badge" onClick={() => setPage('setup')}>⚙ Complete setup</div>}
+          {authed && loading && <div style={{fontSize:12,color:'var(--text-muted)',textAlign:'center'}}>Syncing...</div>}
+          {authed && !loading && <div style={{fontSize:11,color:'var(--text-muted)',textAlign:'center',cursor:'pointer'}} onClick={loadData}>● Live — click to refresh</div>}
+        </div>
+      </aside>
+      <main className="main">
+        <div className="topbar">
+          <div>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
+          </div>
+          {authed && page !== 'setup' && (
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {loading && <span style={{fontSize:12,color:'var(--text-muted)'}}>Loading...</span>}
+              <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
+                {loading ? <span className="spinner"/> : '↻'} Refresh
+              </button>
+              <button className="btn btn-secondary btn-sm" title="Debug: show raw sheet data" onClick={async()=>{
+                try {
+                  const cfg = getConfig();
+                  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${cfg.spreadsheetId}/values/Properties`, { headers:{Authorization:'Bearer '+cfg.accessToken}});
+                  const d = await res.json();
+                  alert('Properties sheet raw data:\n\nRows returned: ' + (d.values?.length||0) + '\n\nRow 1 (headers): ' + JSON.stringify(d.values?.[0]) + '\n\nRow 2 (first data): ' + JSON.stringify(d.values?.[1]) + '\n\nFull response: ' + JSON.stringify(d).slice(0,500));
+                } catch(e){ alert('Debug error: '+e.message); }
+              }}>🔍 Debug</button>
+            </div>
+          )}
+        </div>
+        {loadError && (
+          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 24px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span>⚠️ {loadError}</span>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+          </div>
+        )}
+        <div className="content">{renderPage()}</div>
+      </main>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
