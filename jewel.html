@@ -342,6 +342,13 @@ function rowValues(sheetName, obj) {
   return HEADERS[sheetName].map(h => obj[h] !== undefined ? obj[h] : '');
 }
 
+// Blank out whole rows (used when editing a transaction — clear old legs, re-append).
+// readSheet ignores fully-empty rows, so cleared rows simply disappear from the data.
+async function clearRows(sheetName, rowNums) {
+  const empty = HEADERS[sheetName].map(() => '');
+  for (const rn of rowNums) await updateRow(sheetName, rn, empty);
+}
+
 // Create missing sheet tabs, then write headers where row 1 is empty
 async function initSheets() {
   try {
@@ -816,16 +823,30 @@ function Stock({ data, derived, onRefresh }) {
 function legQty(leg) { return isCash(leg.reserve) ? num(leg.value) : qtyFromGold(leg.weight, leg.touch, leg.margin, leg.direct); }
 function legValue(leg) { return isCash(leg.reserve) ? num(leg.value) : num(leg.value); }
 
-function Convert({ data, derived, onRefresh, onDone }) {
+// Rebuild an editable leg from a saved Entry row
+function entryToLeg(e) {
+  const cash = isCash(e.Reserve);
+  const hasWeight = e['Weight Grams'] !== '' && e['Weight Grams'] !== undefined;
+  return {
+    key: uid('lg'), direction: e.Direction, reserve: e.Reserve, subtype: e.Subtype || '',
+    weight: cash ? '' : (hasWeight ? e['Weight Grams'] : ''),
+    touch:  cash ? '92' : (e.Touch !== '' ? e.Touch : '92'),
+    margin: cash ? '0'  : (e.Margin !== '' ? e.Margin : '0'),
+    direct: cash ? '' : (hasWeight ? '' : e.Qty),
+    value:  cash ? e.Qty : (e.Value || ''),
+  };
+}
+
+function Convert({ data, derived, onRefresh, onDone, edit }) {
   const [saving, setSaving] = useState(false);
-  const [date, setDate] = useState(todayStr());
-  const [counterparty, setCounterparty] = useState('');
-  const [notes, setNotes] = useState('');
+  const [date, setDate] = useState(edit ? edit.date : todayStr());
+  const [counterparty, setCounterparty] = useState(edit ? edit.counterparty : '');
+  const [notes, setNotes] = useState(edit ? edit.notes : '');
   const [remindDate, setRemindDate] = useState('');
   const [remindTitle, setRemindTitle] = useState('');
 
   const newLeg = (direction) => ({ key: uid('lg'), direction, reserve: direction==='Out'?'Ornaments':'Cash', subtype:'', weight:'', touch:'92', margin:'0', direct:'', value:'' });
-  const [legs, setLegs] = useState([newLeg('Out'), newLeg('In')]);
+  const [legs, setLegs] = useState(edit ? edit.entries.map(entryToLeg) : [newLeg('Out'), newLeg('In')]);
   const upd = (key, patch) => setLegs(ls => ls.map(l => l.key===key ? { ...l, ...patch } : l));
   const addLeg = (dir) => setLegs(ls => [...ls, newLeg(dir)]);
   const delLeg = (key) => setLegs(ls => ls.filter(l => l.key!==key));
@@ -839,8 +860,8 @@ function Convert({ data, derived, onRefresh, onDone }) {
   const handleSave = async () => {
     const active = legs.filter(l => legQty(l) > 0 || legValue(l) > 0);
     if (active.length === 0) { alert('Add at least one leg with a quantity or value.'); return; }
-    // Validate metal OUT legs against current balance
-    for (const l of active) {
+    // Validate metal/cash OUT legs against current balance (skip when editing — old legs are already counted)
+    if (!edit) for (const l of active) {
       if (l.direction==='Out' && !isCash(l.reserve)) {
         const bal = derived.balOf(l.reserve);
         if (legQty(l) > bal + 0.001) { alert(`"${l.reserve}" has only ${fmtG(bal)} — this leg removes ${fmtG(legQty(l))}.`); return; }
@@ -851,7 +872,8 @@ function Convert({ data, derived, onRefresh, onDone }) {
     }
     setSaving(true);
     try {
-      const txnId = uid('TX');
+      const txnId = edit ? edit.txnId : uid('TX');
+      if (edit) await clearRows('Entries', edit.entryRows);
       for (const l of active) {
         await addEntry(txnId, date, {
           reserve: l.reserve, subtype: l.subtype, direction: l.direction, qty: legQty(l),
@@ -859,7 +881,7 @@ function Convert({ data, derived, onRefresh, onDone }) {
           value: legValue(l), counterparty, category: 'Convert', ref: '', notes,
         });
       }
-      if (remindDate || remindTitle.trim()) {
+      if (!edit && (remindDate || remindTitle.trim())) {
         await appendRow('Reminders', [uid('RM'), todayStr(), remindDate, remindTitle.trim() || `Follow up ${counterparty||'transaction'}`, 'Transaction', txnId, 'Open', notes]);
       }
       onRefresh();
@@ -914,7 +936,7 @@ function Convert({ data, derived, onRefresh, onDone }) {
   return (
     <div>
       <div className="card">
-        <div className="card-title">Transaction Details</div>
+        <div className="card-title">{edit ? '✏️ Edit Transaction' : 'Transaction Details'}</div>
         <div className="form-grid">
           <div className="form-group"><label>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
           <div className="form-group"><label>Counterparty <span style={{color:'var(--text-muted)'}}>customer / person</span></label><input placeholder="Name (optional)" value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></div>
@@ -948,15 +970,107 @@ function Convert({ data, derived, onRefresh, onDone }) {
           <div className="settle-line total"><span>{Math.abs(diff)<.5 ? '✓ Value balanced' : diff>0 ? 'Out exceeds In by' : 'In exceeds Out by'}</span><span className="mono" style={{color:Math.abs(diff)<.5?'var(--green)':'var(--gold)'}}>{fmtINR(Math.abs(diff))}</span></div>
         </div>
         <div style={{fontSize:11,color:'var(--text-muted)',marginTop:8}}>Value balance is only a cross-check (fill ₹ value on metal legs if you want it to tally) — the reserve quantities always post regardless.</div>
-        <div className="form-grid" style={{marginTop:14}}>
+        {!edit && <div className="form-grid" style={{marginTop:14}}>
           <div className="form-group"><label>🔔 Reminder date <span style={{color:'var(--text-muted)'}}>optional</span></label><input type="date" value={remindDate} onChange={e=>setRemindDate(e.target.value)}/></div>
           <div className="form-group"><label>Reminder note</label><input placeholder="e.g. collect balance / give receipt" value={remindTitle} onChange={e=>setRemindTitle(e.target.value)}/></div>
-        </div>
+        </div>}
         <div className="btn-row">
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving…</>:'Save Transaction'}</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving…</>:edit?'Update Transaction':'Save Transaction'}</button>
           <button className="btn btn-secondary" onClick={onDone}>Cancel</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── TRANSACTIONS — entries grouped by Txn ID, view & edit ────────────────────
+function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
+  const [filter, setFilter] = useState('all');
+  const [openTxn, setOpenTxn] = useState(null);
+  const [busy, setBusy] = useState('');
+
+  // Group entry rows by Txn ID
+  const groups = {};
+  data.entries.forEach(e => { const k = e['Txn ID'] || e.ID; (groups[k] = groups[k] || []).push(e); });
+  const list = Object.entries(groups).map(([txnId, legs]) => {
+    const first = legs[0];
+    const cats = [...new Set(legs.map(l => l.Category).filter(Boolean))];
+    const editable = legs.every(l => (l.Category || 'Convert') === 'Convert');
+    return {
+      txnId, legs, date: first.Date, counterparty: first.Counterparty || '', notes: first.Notes || '',
+      cats, editable, entryRows: legs.map(l => l._row),
+      kind: cats.includes('Lending') || cats.includes('Lending Return') ? 'Lending' : cats.includes('Expense') ? 'Expense' : 'Convert',
+    };
+  }).sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.txnId||'').localeCompare(a.txnId||''));
+
+  const shown = list.filter(g => filter==='all' ? true : g.kind===filter);
+
+  const doDelete = async (g) => {
+    if (!window.confirm(`Delete this transaction (${g.legs.length} legs)? Reserve balances will adjust. This cannot be undone.`)) return;
+    setBusy(g.txnId);
+    try { await clearRows('Entries', g.entryRows); onRefresh(); }
+    catch(e) { alert('Error: '+e.message); }
+    setBusy('');
+  };
+
+  const kindBadge = { Convert:'badge-blue', Lending:'badge-gold', Expense:'badge-red' };
+
+  return (
+    <div>
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All ({list.length})</button>
+          <button className={`tab ${filter==='Convert'?'active':''}`} onClick={()=>setFilter('Convert')}>Conversions</button>
+          <button className={`tab ${filter==='Lending'?'active':''}`} onClick={()=>setFilter('Lending')}>Lending</button>
+          <button className={`tab ${filter==='Expense'?'active':''}`} onClick={()=>setFilter('Expense')}>Expenses</button>
+        </div>
+        <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+      </div>
+
+      {shown.length===0 ? <div className="card"><div className="empty"><p>No transactions here yet.</p></div></div> :
+      <div className="gap-12">{shown.map(g => {
+        const isOpen = openTxn===g.txnId;
+        return (
+        <div className="card" key={g.txnId} style={{padding:0,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenTxn(o=>o===g.txnId?null:g.txnId)}>
+            <div>
+              <div style={{fontWeight:600,fontSize:14}}>{g.counterparty || (g.kind==='Expense'?'Expense':'Transaction')} <span className={`badge ${kindBadge[g.kind]}`} style={{marginLeft:6}}>{g.kind}</span></div>
+              <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{g.date} · {g.legs.length} leg{g.legs.length>1?'s':''}{g.notes?` · ${g.notes}`:''}</div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+                {g.legs.map(l => (
+                  <span key={l.ID} className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓':'↑'} {l.Reserve} {fmtReserve(l.Reserve, l.Qty)}</span>
+                ))}
+              </div>
+              <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
+            </div>
+          </div>
+
+          {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+            <div className="table-wrap"><table>
+              <thead><tr><th>Dir</th><th>Reserve</th><th>Subtype</th><th>Qty</th><th>Touch</th><th>Value</th><th>Note</th></tr></thead>
+              <tbody>{g.legs.map(l => (
+                <tr key={l.ID}>
+                  <td><span className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓ In':'↑ Out'}</span></td>
+                  <td className="name">{l.Reserve}</td>
+                  <td>{l.Subtype||'—'}</td>
+                  <td className="mono">{fmtReserve(l.Reserve, l.Qty)}</td>
+                  <td className="mono" style={{color:'var(--text-muted)'}}>{l.Touch?`${l.Touch}${num(l.Margin)?'+'+l.Margin:''}`:'—'}</td>
+                  <td className="mono">{l.Value?fmtINR(l.Value):'—'}</td>
+                  <td style={{fontSize:12}}>{l.Notes||'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+            <div className="btn-row">
+              {g.editable
+                ? <button className="btn btn-primary btn-sm" onClick={()=>onEdit({ txnId:g.txnId, date:g.date, counterparty:g.counterparty, notes:g.notes, entryRows:g.entryRows, entries:g.legs })}>✏️ Edit</button>
+                : <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit this on the {g.kind} page — it is linked to that {g.kind.toLowerCase()} record.</span>}
+              <button className="btn btn-danger btn-sm" onClick={()=>doDelete(g)} disabled={busy===g.txnId}>{busy===g.txnId?<span className="spinner"/>:'🗑 Delete'}</button>
+            </div>
+          </div>}
+        </div>);
+      })}</div>}
     </div>
   );
 }
@@ -1696,6 +1810,7 @@ function Setup() {
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [page, setPage] = useState('dashboard');
+  const [editTxn, setEditTxn] = useState(null);
   const [data, setData] = useState({ stock: [], reserves: [], entries: [], lending: [], payments: [], reminders: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -1743,6 +1858,7 @@ function App() {
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
     { id: 'reserves', label: 'Reserves', icon: 'layers', section: 'Manage' },
     { id: 'convert', label: 'New Transaction', icon: 'exchange', section: 'Manage' },
+    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Manage' },
     { id: 'lending', label: 'Lending', icon: 'hand', section: 'Manage' },
     { id: 'expenses', label: 'Expenses', icon: 'currency', section: 'Manage' },
     { id: 'stock', label: 'Stock', icon: 'box', section: 'Manage' },
@@ -1756,6 +1872,7 @@ function App() {
     dashboard: ['Dashboard', 'Reserves, lending and reminders at a glance'],
     reserves: ['Reserves', 'Balances, opening & per-reserve ledger'],
     convert: ['New Transaction', 'Convert between reserves — sell, buy, exchange'],
+    transactions: ['Transactions', 'View and edit past transactions'],
     lending: ['Lending', 'Cash or metal given to help — track returns & interest'],
     expenses: ['Expenses', 'Money spent out of the Cash reserve'],
     stock: ['Stock', 'Boxes & pockets — physical opening inventory'],
@@ -1778,8 +1895,9 @@ function App() {
     }
     switch (page) {
       case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage} onRefresh={loadData}/>;
-      case 'reserves': return <ReservesPage data={data} derived={derived} onRefresh={loadData} onNew={()=>setPage('convert')}/>;
-      case 'convert': return <Convert data={data} derived={derived} onRefresh={loadData} onDone={()=>setPage('reserves')}/>;
+      case 'reserves': return <ReservesPage data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}}/>;
+      case 'convert': return <Convert key={editTxn?editTxn.txnId:'new'} data={data} derived={derived} edit={editTxn} onRefresh={loadData} onDone={()=>{setEditTxn(null);setPage(editTxn?'transactions':'reserves');}}/>;
+      case 'transactions': return <Transactions data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}} onEdit={(g)=>{setEditTxn(g);setPage('convert');}}/>;
       case 'lending': return <Lending data={data} derived={derived} onRefresh={loadData}/>;
       case 'expenses': return <Expenses data={data} derived={derived} onRefresh={loadData}/>;
       case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
@@ -1805,7 +1923,7 @@ function App() {
             <div className="nav-section" key={section}>
               <div className="nav-section-label">{section}</div>
               {nav.filter(n => n.section === section).map(n => (
-                <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => setPage(n.id)}>
+                <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => { setEditTxn(null); setPage(n.id); }}>
                   <Icon name={n.icon} size={16}/>
                   <span>{n.label}</span>
                 </button>
