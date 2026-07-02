@@ -267,13 +267,14 @@ const setRuntimeConfig = (cfg) => { _runtimeConfig = cfg; };
 const HEADERS = {
   Stock:     ['ID','Box Name','Metal','Description','Location','Pieces','Gross Weight Grams','Weight Grams','Status','Notes','Created','Reserve Type'],
   Reserves:  ['Reserve','Kind','Unit','Opening Balance','Subtypes','Notes'],
+  Banks:     ['Name','Opening Balance','Notes'],
   Entries:   ['ID','Txn ID','Date','Reserve','Subtype','Direction','Qty','Weight Grams','Touch','Margin','Value','Counterparty','Category','Ref','Notes'],
   Lending:   ['ID','Date','Person','Phone','Type','Reserve','Weight Grams','Amount','Interest %','Interest Type','Due Date','Status','Notes'],
   Payments:  ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
   Reminders: ['ID','Created','Due Date','Title','Linked Type','Linked ID','Status','Notes'],
 };
 
-// The six reserves. Kind drives unit (grams vs ₹) and the combined gold/silver views.
+// The six built-in reserves. Bank reserves (kind Cash) are added dynamically from the Banks sheet.
 const RESERVES = [
   { name: 'Cash',        kind: 'Cash',   unit: '₹',    emoji: '💵' },
   { name: 'Ornaments',   kind: 'Gold',   unit: 'g',    emoji: '💍' },
@@ -283,8 +284,10 @@ const RESERVES = [
   { name: 'Old Silver',  kind: 'Silver', unit: 'g',    emoji: '⚪' },
 ];
 const RESERVE_NAMES = RESERVES.map(r => r.name);
-const reserveKind = (name) => (RESERVES.find(r => r.name === name) || {}).kind || 'Gold';
-const isCash = (name) => name === 'Cash';
+// Metal reserves are the only gram-denominated ones; everything else (Cash + banks) is ₹.
+const METAL_RESERVES = ['Ornaments','Gold Metal','Old Gold','Silver','Old Silver'];
+const isCash = (name) => !METAL_RESERVES.includes(name);
+const reserveKind = (name) => name==='Silver'||name==='Old Silver' ? 'Silver' : METAL_RESERVES.includes(name) ? 'Gold' : 'Cash';
 const fmtReserve = (name, qty) => isCash(name) ? fmtINR(qty) : fmtG(qty);
 
 async function sheetsRequest(method, path, body = null) {
@@ -429,31 +432,39 @@ async function addEntry(txnId, date, leg) {
 
 // ── DERIVED TOTALS — computed fresh from sheets every load ───────────────────
 function computeReserves(data) {
-  // Opening balance per reserve: metals from tagged Stock rows + manual top-up; Cash from Reserves sheet.
+  // Bank reserves (dynamic, kind Cash) from the Banks sheet
+  const bankDefs = (data.banks || []).filter(b => (b.Name||'').trim());
+  const bankReserves = bankDefs.map(b => ({ name: b.Name.trim(), kind:'Cash', unit:'₹', emoji:'🏦', isBank:true,
+    bankRow: b._row, bankOpening: num(b['Opening Balance']), bankNotes: b.Notes||'' }));
+  const baseReserves = [...RESERVES, ...bankReserves];
+  const allNames = baseReserves.map(r => r.name);
+
+  // Opening balance per reserve: metals from tagged Stock rows + manual top-up; Cash from Reserves sheet; banks from Banks sheet.
   const stockOpening = {};
-  RESERVE_NAMES.forEach(n => stockOpening[n] = 0);
+  allNames.forEach(n => stockOpening[n] = 0);
   data.stock.forEach(b => {
     const rt = (b['Reserve Type']||'').trim();
-    if (RESERVE_NAMES.includes(rt)) stockOpening[rt] += num(b['Weight Grams']);
+    if (allNames.includes(rt)) stockOpening[rt] += num(b['Weight Grams']);
   });
 
   const manualOpening = {};
-  RESERVE_NAMES.forEach(n => manualOpening[n] = 0);
+  allNames.forEach(n => manualOpening[n] = 0);
   data.reserves.forEach(r => { if (RESERVE_NAMES.includes(r.Reserve)) manualOpening[r.Reserve] = num(r['Opening Balance']); });
+  bankReserves.forEach(b => { manualOpening[b.name] = b.bankOpening; });
 
-  // Subtypes config per reserve
+  // Subtypes config per reserve (built-in reserves only)
   const subtypes = {};
   data.reserves.forEach(r => { if (RESERVE_NAMES.includes(r.Reserve)) subtypes[r.Reserve] = (r.Subtypes||'').split(',').map(s=>s.trim()).filter(Boolean); });
 
   // Movement totals from Entries
   const moved = {};
-  RESERVE_NAMES.forEach(n => moved[n] = 0);
+  allNames.forEach(n => moved[n] = 0);
   data.entries.forEach(e => {
-    if (!RESERVE_NAMES.includes(e.Reserve)) return;
+    if (!allNames.includes(e.Reserve)) return;
     moved[e.Reserve] += (e.Direction === 'In' ? 1 : -1) * num(e.Qty);
   });
 
-  const reserves = RESERVES.map(rs => {
+  const reserves = baseReserves.map(rs => {
     const opening = (rs.kind === 'Cash' ? 0 : stockOpening[rs.name]) + manualOpening[rs.name];
     const balance = Math.round((opening + moved[rs.name]) * 1000) / 1000;
     return { ...rs, opening, stockOpening: stockOpening[rs.name], manualOpening: manualOpening[rs.name],
@@ -464,6 +475,8 @@ function computeReserves(data) {
   const goldTotal   = balOf('Ornaments') + balOf('Gold Metal') + balOf('Old Gold');
   const silverTotal = balOf('Silver') + balOf('Old Silver');
   const cashBal     = balOf('Cash');
+  const banks       = reserves.filter(r => r.isBank);
+  const bankTotal   = banks.reduce((s,b) => s + b.balance, 0);
 
   // Lending outstanding — simple interest per month on principal until Closed
   const paidFor = (refType, refId) => data.payments
@@ -487,7 +500,7 @@ function computeReserves(data) {
   const openReminders = data.reminders.filter(r => (r.Status||'Open') !== 'Closed')
     .sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
 
-  return { reserves, balOf, goldTotal, silverTotal, cashBal, lendOutstanding, lendingDue, openReminders, paidFor };
+  return { reserves, balOf, goldTotal, silverTotal, cashBal, banks, bankTotal, lendOutstanding, lendingDue, openReminders, paidFor };
 }
 
 // ── SMART DATA FILTER — send only what the query needs ───────────────────────
@@ -867,7 +880,8 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
         if (legQty(l) > bal + 0.001) { alert(`"${l.reserve}" has only ${fmtG(bal)} — this leg removes ${fmtG(legQty(l))}.`); return; }
       }
       if (l.direction==='Out' && isCash(l.reserve)) {
-        if (num(l.value) > derived.cashBal + 0.5) { alert(`Cash has only ${fmtINR(derived.cashBal)} — this leg removes ${fmtINR(num(l.value))}.`); return; }
+        const bal = derived.balOf(l.reserve);
+        if (num(l.value) > bal + 0.5) { alert(`"${l.reserve}" has only ${fmtINR(bal)} — this leg removes ${fmtINR(num(l.value))}.`); return; }
       }
     }
     setSaving(true);
@@ -897,7 +911,7 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
       <div className="item-row" key={l.key}>
         <div className="form-group"><label>Reserve</label>
           <select value={l.reserve} onChange={e=>upd(l.key,{reserve:e.target.value, subtype:''})}>
-            {RESERVE_NAMES.map(n=><option key={n} value={n}>{n}{!isCash(n)?` (${fmtG(derived.balOf(n))})`:` (${fmtINR(derived.cashBal)})`}</option>)}
+            {derived.reserves.map(r=><option key={r.name} value={r.name}>{r.name} ({fmtReserve(r.name, r.balance)})</option>)}
           </select>
         </div>
         <div className="form-group"><label>Subtype</label>
@@ -1081,13 +1095,31 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
   const [editRes, setEditRes] = useState(null); // reserve name being edited
   const [saving, setSaving] = useState(false);
   const [edit, setEdit] = useState({ opening:'', subtypes:'' });
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [bank, setBank] = useState({ name:'', opening:'', notes:'' });
 
-  const startEdit = (r) => { setEditRes(r.name); setEdit({ opening: r.manualOpening||0, subtypes: (r.subtypes||[]).join(', ') }); };
+  const startEdit = (r) => { setEditRes(r.name); setEdit({ opening: r.isBank ? (r.bankOpening||0) : (r.manualOpening||0), subtypes: r.isBank ? (r.bankNotes||'') : (r.subtypes||[]).join(', ') }); };
   const saveEdit = async (r) => {
     setSaving(true);
     try {
-      await updateRow('Reserves', r._row, rowValues('Reserves', { Reserve:r.name, Kind:r.kind, Unit:r.unit, 'Opening Balance':num(edit.opening), Subtypes:edit.subtypes, Notes:'' }));
+      if (r.isBank) {
+        await updateRow('Banks', r.bankRow, rowValues('Banks', { Name:r.name, 'Opening Balance':num(edit.opening), Notes:edit.subtypes }));
+      } else {
+        await updateRow('Reserves', r._row, rowValues('Reserves', { Reserve:r.name, Kind:r.kind, Unit:r.unit, 'Opening Balance':num(edit.opening), Subtypes:edit.subtypes, Notes:'' }));
+      }
       setEditRes(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const addBank = async () => {
+    const name = bank.name.trim();
+    if (!name) { alert('Enter a bank/account name.'); return; }
+    if (derived.reserves.some(r => r.name.toLowerCase() === name.toLowerCase())) { alert('A reserve with that name already exists.'); return; }
+    setSaving(true);
+    try {
+      await appendRow('Banks', rowValues('Banks', { Name:name, 'Opening Balance':num(bank.opening), Notes:bank.notes }));
+      setBank({ name:'', opening:'', notes:'' }); setShowAddBank(false); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
@@ -1097,13 +1129,30 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
       <div className="stats-row">
         <div className="stat-card"><div className="stat-label">🥇 Gold Reserve (combined)</div><div className="stat-value gold">{fmtG(derived.goldTotal)}</div><div className="stat-sub">Ornaments + Metal + Old Gold</div></div>
         <div className="stat-card"><div className="stat-label">🥈 Silver Reserve (combined)</div><div className="stat-value silver">{fmtG(derived.silverTotal)}</div><div className="stat-sub">Silver + Old Silver</div></div>
-        <div className="stat-card"><div className="stat-label">💵 Cash</div><div className="stat-value green">{fmtINR(derived.cashBal)}</div><div className="stat-sub">In hand + account</div></div>
+        <div className="stat-card"><div className="stat-label">💵 Cash</div><div className="stat-value green">{fmtINR(derived.cashBal)}</div><div className="stat-sub">In hand</div></div>
+        <div className="stat-card"><div className="stat-label">🏦 Banks total</div><div className="stat-value green">{fmtINR(derived.bankTotal)}</div><div className="stat-sub">{derived.banks.length} account{derived.banks.length!==1?'s':''}</div></div>
       </div>
 
       <div className="section-row">
         <h3>Reserves</h3>
-        <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-secondary" onClick={()=>{setBank({name:'',opening:'',notes:''});setShowAddBank(o=>!o);}}>🏦 Add Bank Account</button>
+          <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+        </div>
       </div>
+
+      {showAddBank && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">New Bank / Account Reserve</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Account Name *</label><input placeholder="e.g. Ramkumar HDFC" value={bank.name} onChange={e=>setBank(p=>({...p,name:e.target.value}))}/></div>
+          <div className="form-group"><label>Opening Balance (₹)</label><input type="number" value={bank.opening} onChange={e=>setBank(p=>({...p,opening:e.target.value}))}/></div>
+          <div className="form-group"><label>Notes</label><input placeholder="Account no. / branch" value={bank.notes} onChange={e=>setBank(p=>({...p,notes:e.target.value}))}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={addBank} disabled={saving}>{saving?<span className="spinner"/>:'Add Account'}</button>
+          <button className="btn btn-secondary" onClick={()=>setShowAddBank(false)}>Cancel</button>
+        </div>
+      </div>}
 
       <div className="gap-12">{derived.reserves.map(r => {
         const entries = data.entries.filter(e => e.Reserve===r.name).sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
@@ -1127,10 +1176,11 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
 
           {editRes===r.name && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px',background:'var(--navy)'}}>
             <div className="form-grid">
-              <div className="form-group"><label>Manual Opening {isCash(r.name)?'(₹)':'(g) — adds to box-tagged opening'}</label><input type="number" step="0.001" value={edit.opening} onChange={e=>setEdit(p=>({...p,opening:e.target.value}))}/></div>
-              <div className="form-group" style={{gridColumn:'1/-1'}}><label>Subtypes <span style={{color:'var(--text-muted)'}}>comma separated</span></label><input placeholder="e.g. 22k, 24k, coins" value={edit.subtypes} onChange={e=>setEdit(p=>({...p,subtypes:e.target.value}))}/></div>
+              <div className="form-group"><label>{r.isBank?'Opening Balance (₹)':`Manual Opening ${isCash(r.name)?'(₹)':'(g) — adds to box-tagged opening'}`}</label><input type="number" step="0.001" value={edit.opening} onChange={e=>setEdit(p=>({...p,opening:e.target.value}))}/></div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}><label>{r.isBank?'Notes':'Subtypes'} <span style={{color:'var(--text-muted)'}}>{r.isBank?'account no. / branch':'comma separated'}</span></label><input placeholder={r.isBank?'HDFC ••1234':'e.g. 22k, 24k, coins'} value={edit.subtypes} onChange={e=>setEdit(p=>({...p,subtypes:e.target.value}))}/></div>
             </div>
             {!isCash(r.name) && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Box-tagged opening: {fmtG(r.stockOpening)} (from Stock). Total opening = box-tagged + manual.</div>}
+            {r.isBank && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Balance = opening + all In/Out entries for this account. (Account name can't be changed here — past entries reference it.)</div>}
             <div className="btn-row">
               <button className="btn btn-primary btn-sm" onClick={()=>saveEdit(r)} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
               <button className="btn btn-secondary btn-sm" onClick={()=>setEditRes(null)}>Cancel</button>
@@ -1167,17 +1217,18 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
 // ── EXPENSES — money out of Cash reserve ─────────────────────────────────────
 function Expenses({ data, derived, onRefresh }) {
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ date: todayStr(), amount:'', subtype:'', notes:'' });
+  const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
+  const [form, setForm] = useState({ date: todayStr(), reserve:'Cash', amount:'', subtype:'', notes:'' });
   const f = (k,v)=>setForm(p=>({...p,[k]:v}));
-  const expenses = data.entries.filter(e => e.Reserve==='Cash' && e.Direction==='Out' && e.Category==='Expense')
+  const expenses = data.entries.filter(e => isCash(e.Reserve) && e.Direction==='Out' && e.Category==='Expense')
     .sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
 
   const handleSave = async () => {
     if (num(form.amount)<=0) { alert('Enter the amount.'); return; }
     setSaving(true);
     try {
-      await addEntry(uid('EX'), form.date, { reserve:'Cash', subtype:form.subtype, direction:'Out', qty:num(form.amount), value:num(form.amount), category:'Expense', notes:form.notes });
-      setForm({ date: todayStr(), amount:'', subtype:'', notes:'' }); onRefresh();
+      await addEntry(uid('EX'), form.date, { reserve:form.reserve, subtype:form.subtype, direction:'Out', qty:num(form.amount), value:num(form.amount), category:'Expense', notes:form.notes });
+      setForm({ date: todayStr(), reserve:form.reserve, amount:'', subtype:'', notes:'' }); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
   };
@@ -1186,12 +1237,14 @@ function Expenses({ data, derived, onRefresh }) {
     <div>
       <div className="stats-row">
         <div className="stat-card"><div className="stat-label">💵 Cash Balance</div><div className={`stat-value ${derived.cashBal>=0?'green':'red'}`}>{fmtINR(derived.cashBal)}</div></div>
+        <div className="stat-card"><div className="stat-label">🏦 Banks total</div><div className="stat-value green">{fmtINR(derived.bankTotal)}</div><div className="stat-sub">{derived.banks.length} account{derived.banks.length!==1?'s':''}</div></div>
         <div className="stat-card"><div className="stat-label">Total Expenses Logged</div><div className="stat-value gold">{fmtINR(expenses.reduce((s,e)=>s+num(e.Qty),0))}</div><div className="stat-sub">{expenses.length} entries</div></div>
       </div>
       <div className="card" style={{marginBottom:16}}>
-        <div className="card-title">Record an Expense (from Cash)</div>
+        <div className="card-title">Record an Expense</div>
         <div className="form-grid">
           <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
+          <div className="form-group"><label>Paid From</label><select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{cashNames.map(n=><option key={n} value={n}>{n} ({fmtINR(derived.balOf(n))})</option>)}</select></div>
           <div className="form-group"><label>Amount (₹) *</label><input type="number" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
           <div className="form-group"><label>Category</label><input placeholder="e.g. rent, salary, tea" value={form.subtype} onChange={e=>f('subtype',e.target.value)}/></div>
           <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
@@ -1204,9 +1257,9 @@ function Expenses({ data, derived, onRefresh }) {
         <div className="card-title">Recent Expenses</div>
         {expenses.length===0 ? <div className="empty"><p>No expenses recorded yet.</p></div> :
         <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Notes</th></tr></thead>
+          <thead><tr><th>Date</th><th>Paid From</th><th>Category</th><th>Amount</th><th>Notes</th></tr></thead>
           <tbody>{expenses.slice(0,100).map(e=>(
-            <tr key={e.ID}><td className="mono">{e.Date}</td><td>{e.Subtype||'—'}</td><td className="mono" style={{color:'var(--red)'}}>−{fmtINR(e.Qty)}</td><td style={{fontSize:12}}>{e.Notes||'—'}</td></tr>
+            <tr key={e.ID}><td className="mono">{e.Date}</td><td>{e.Reserve}</td><td>{e.Subtype||'—'}</td><td className="mono" style={{color:'var(--red)'}}>−{fmtINR(e.Qty)}</td><td style={{fontSize:12}}>{e.Notes||'—'}</td></tr>
           ))}</tbody>
         </table></div>}
       </div>
@@ -1278,15 +1331,16 @@ function Reminders({ data, derived, onRefresh }) {
 }
 
 // ── LENDING ──────────────────────────────────────────────────────────────────
-const lendReserveOptions = (type) => type==='Cash' ? ['Cash'] : type==='Gold' ? ['Old Gold','Gold Metal','Ornaments'] : ['Old Silver','Silver'];
+const lendReserveOptions = (type, cashNames) => type==='Cash' ? (cashNames && cashNames.length ? cashNames : ['Cash']) : type==='Gold' ? ['Old Gold','Gold Metal','Ornaments'] : ['Old Silver','Silver'];
 
 function Lending({ data, derived, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
   const blank = { date: todayStr(), person:'', phone:'', type:'Cash', reserve:'Cash', weight:'', amount:'', interest:'', due:'', notes:'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
-  const setType = (t) => setForm(p => ({ ...p, type:t, reserve: lendReserveOptions(t)[0] }));
+  const setType = (t) => setForm(p => ({ ...p, type:t, reserve: lendReserveOptions(t, cashNames)[0] }));
 
   const handleSave = async () => {
     if (!form.person.trim()) { alert('Person name required.'); return; }
@@ -1337,7 +1391,7 @@ function Lending({ data, derived, onRefresh }) {
           <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
           <div className="form-group"><label>What Given</label><select value={form.type} onChange={e=>setType(e.target.value)}><option>Cash</option><option>Gold</option><option>Silver</option></select></div>
           <div className="form-group"><label>From Reserve <span style={{color:'var(--text-muted)'}}>{fmtReserve(form.reserve, derived.balOf(form.reserve))} avail</span></label>
-            <select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{lendReserveOptions(form.type).map(n=><option key={n} value={n}>{n}</option>)}</select>
+            <select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{lendReserveOptions(form.type, cashNames).map(n=><option key={n} value={n}>{n}</option>)}</select>
           </div>
           {form.type!=='Cash' && <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" value={form.weight} onChange={e=>f('weight',e.target.value)}/></div>}
           <div className="form-group"><label>Value Given (₹) *</label><input type="number" placeholder="Principal value" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
@@ -1720,7 +1774,7 @@ function Setup() {
         <div className={`setup-num ${cfg.accessToken ? 'done' : ''}`}>{cfg.accessToken ? <Icon name="check" size={14}/> : '2'}</div>
         <div className="setup-text">
           <h3>Sign in with Google</h3>
-          <p>Authorize access to your Google Sheet. On first load the app creates all needed tabs (Stock, Reserves, Entries, Lending, Payments, Reminders) and seeds the six reserves automatically. Your existing Stock data is preserved — just add a <code>Reserve Type</code> column at the end and tag each row.</p>
+          <p>Authorize access to your Google Sheet. On first load the app creates all needed tabs (Stock, Reserves, Banks, Entries, Lending, Payments, Reminders) and seeds the six reserves automatically. Bank/account reserves you add live in the <code>Banks</code> tab. Your existing Stock data is preserved — just add a <code>Reserve Type</code> column at the end and tag each row.</p>
           <div className="config-status">
             <div className={`dot ${cfg.accessToken ? 'dot-green' : 'dot-red'}`}/>
             <span style={{fontSize:12,color:cfg.accessToken?'var(--green)':'var(--red)'}}>{cfg.accessToken ? 'Signed in — Google Sheets access active' : 'Not signed in'}</span>
@@ -1811,7 +1865,7 @@ function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [page, setPage] = useState('dashboard');
   const [editTxn, setEditTxn] = useState(null);
-  const [data, setData] = useState({ stock: [], reserves: [], entries: [], lending: [], payments: [], reminders: [] });
+  const [data, setData] = useState({ stock: [], reserves: [], banks: [], entries: [], lending: [], payments: [], reminders: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -1832,11 +1886,11 @@ function App() {
     setLoadError('');
     try {
       await initSheets();
-      const [stock, reserves, entries, lending, payments, reminders] = await Promise.all([
-        readSheet('Stock'), readSheet('Reserves'), readSheet('Entries'),
+      const [stock, reserves, banks, entries, lending, payments, reminders] = await Promise.all([
+        readSheet('Stock'), readSheet('Reserves'), readSheet('Banks'), readSheet('Entries'),
         readSheet('Lending'), readSheet('Payments'), readSheet('Reminders'),
       ]);
-      setData({ stock, reserves, entries, lending, payments, reminders });
+      setData({ stock, reserves, banks, entries, lending, payments, reminders });
       setAuthed(true);
     } catch (e) {
       console.error('loadData error:', e);
