@@ -274,18 +274,19 @@ const HEADERS = {
   Reminders: ['ID','Created','Due Date','Title','Linked Type','Linked ID','Status','Notes'],
 };
 
-// The six built-in reserves. Bank reserves (kind Cash) are added dynamically from the Banks sheet.
+// The built-in reserves. Bank reserves (kind Cash) are added dynamically from the Banks sheet.
 const RESERVES = [
-  { name: 'Cash',        kind: 'Cash',   unit: '₹',    emoji: '💵' },
-  { name: 'Ornaments',   kind: 'Gold',   unit: 'g',    emoji: '💍' },
-  { name: 'Gold Metal',  kind: 'Gold',   unit: 'g',    emoji: '🥇' },
-  { name: 'Old Gold',    kind: 'Gold',   unit: 'g',    emoji: '🟡' },
-  { name: 'Silver',      kind: 'Silver', unit: 'g',    emoji: '🥈' },
-  { name: 'Old Silver',  kind: 'Silver', unit: 'g',    emoji: '⚪' },
+  { name: 'Cash',          kind: 'Cash',   unit: '₹',    emoji: '💵' },
+  { name: 'Ornaments',     kind: 'Gold',   unit: 'g',    emoji: '💍' },
+  { name: 'Gold Metal',    kind: 'Gold',   unit: 'g',    emoji: '🥇' },
+  { name: 'Old Gold',      kind: 'Gold',   unit: 'g',    emoji: '🟡' },
+  { name: 'Own Use Gold',  kind: 'Gold',   unit: 'g',    emoji: '🏵️', subtypes: "Sankari's Gold, Amma's Gold, Revathi's Gold" },
+  { name: 'Silver',        kind: 'Silver', unit: 'g',    emoji: '🥈' },
+  { name: 'Old Silver',    kind: 'Silver', unit: 'g',    emoji: '⚪' },
 ];
 const RESERVE_NAMES = RESERVES.map(r => r.name);
 // Metal reserves are the only gram-denominated ones; everything else (Cash + banks) is ₹.
-const METAL_RESERVES = ['Ornaments','Gold Metal','Old Gold','Silver','Old Silver'];
+const METAL_RESERVES = ['Ornaments','Gold Metal','Old Gold','Own Use Gold','Silver','Old Silver'];
 const isCash = (name) => !METAL_RESERVES.includes(name);
 const reserveKind = (name) => name==='Silver'||name==='Old Silver' ? 'Silver' : METAL_RESERVES.includes(name) ? 'Gold' : 'Cash';
 const fmtReserve = (name, qty) => isCash(name) ? fmtINR(qty) : fmtG(qty);
@@ -372,11 +373,14 @@ async function initSheets() {
       }
     } catch(e) { console.warn('initSheets header for', sheet, e.message); }
   }
-  // Seed the 6 reserve definitions once (only if Reserves has just the header row)
+  // Ensure a Reserves row exists for every built-in reserve; append any that are missing
+  // (adds new reserves like "Own Use Gold" for existing sheets without touching edited rows).
   try {
-    const r = await sheetsRequest('GET', '/values/Reserves!A2:A2');
-    if (!r.values || r.values.length === 0) {
-      const rows = RESERVES.map(rs => [rs.name, rs.kind, rs.unit, 0, '', '']);
+    const r = await sheetsRequest('GET', '/values/Reserves!A2:A100');
+    const existing = (r.values || []).map(row => (row[0]||'').trim()).filter(Boolean);
+    const missing = RESERVES.filter(rs => !existing.includes(rs.name));
+    if (missing.length) {
+      const rows = missing.map(rs => [rs.name, rs.kind, rs.unit, 0, rs.subtypes || '', '']);
       await sheetsRequest('POST', '/values/Reserves!A1:append?valueInputOption=USER_ENTERED', { values: rows });
     }
   } catch(e) { console.warn('initSheets seed Reserves:', e.message); }
@@ -734,7 +738,7 @@ function Stock({ data, derived, onRefresh }) {
   const openEdit = (b) => { setForm({...blank, ...b}); setMode({ editing: b._row, created: b.Created }); };
 
   // Reserve-type options matching the box metal
-  const rtOptions = (metal) => metal==='Silver' ? ['Silver','Old Silver'] : ['Ornaments','Gold Metal','Old Gold'];
+  const rtOptions = (metal) => metal==='Silver' ? ['Silver','Old Silver'] : ['Ornaments','Gold Metal','Old Gold','Own Use Gold'];
 
   const handleSave = async () => {
     if (!form['Box Name'] || form['Weight Grams']==='') { alert('Box name and net weight are required.'); return; }
@@ -916,12 +920,10 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
         </div>
         <div className="form-group"><label>Subtype</label>
           {(() => {
-            const opts = cash 
-              ? (derived.reserves.find(r => r.name === l.reserve)?.subtypes || [])
-              : data.stock
-                  .filter(b => b['Reserve Type'] === l.reserve)
-                  .map(b => b['Box Name'])
-                  .filter((val, idx, arr) => arr.indexOf(val) === idx && val);
+            // Configured categories (Reserves sheet) + distinct box names tagged to this reserve
+            const cfg = derived.reserves.find(r => r.name === l.reserve)?.subtypes || [];
+            const boxNames = cash ? [] : data.stock.filter(b => b['Reserve Type'] === l.reserve).map(b => b['Box Name']).filter(Boolean);
+            const opts = [...new Set([...cfg, ...boxNames])];
             return opts.length > 0 ? (
               <select value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}>
                 <option value="">— select pocket / type —</option>
@@ -1331,7 +1333,7 @@ function Reminders({ data, derived, onRefresh }) {
 }
 
 // ── LENDING ──────────────────────────────────────────────────────────────────
-const lendReserveOptions = (type, cashNames) => type==='Cash' ? (cashNames && cashNames.length ? cashNames : ['Cash']) : type==='Gold' ? ['Old Gold','Gold Metal','Ornaments'] : ['Old Silver','Silver'];
+const lendReserveOptions = (type, cashNames) => type==='Cash' ? (cashNames && cashNames.length ? cashNames : ['Cash']) : type==='Gold' ? ['Old Gold','Gold Metal','Ornaments','Own Use Gold'] : ['Old Silver','Silver'];
 
 function Lending({ data, derived, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
