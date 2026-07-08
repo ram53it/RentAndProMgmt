@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Money Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -192,6 +192,51 @@
     .pin-setup-form { text-align: left; }
     .pin-setup-form .form-group { margin-bottom: 12px; }
     .pin-toggle { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 12px; display: inline-block; }
+    /* Receipt modal */
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px; }
+    .modal-box { background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto; }
+    .modal-actions { display:flex;gap:10px;padding:16px;border-top:1px solid #e5e7eb;background:#fff;border-radius:0 0 16px 16px; }
+
+    /* Receipt content — white/print styling */
+    .receipt-wrap { background:#fff;color:#111;padding:32px 28px;font-family:'Inter',sans-serif; }
+    .receipt-title { text-align:center;font-size:26px;font-weight:800;letter-spacing:.04em;color:#111;margin-bottom:4px; }
+    .receipt-emoji { text-align:center;font-size:32px;margin-bottom:6px; }
+    .receipt-divider { border:none;border-top:2px solid #111;margin:16px 0; }
+    .receipt-divider-light { border:none;border-top:1px dashed #ccc;margin:8px 0; }
+    .receipt-label { font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px; }
+    .receipt-value { font-size:15px;color:#111;margin-bottom:12px; }
+    .receipt-row { display:flex;justify-content:space-between;align-items:center;padding:8px 0; }
+    .receipt-row-label { font-size:14px;color:#555; }
+    .receipt-row-value { font-size:14px;font-weight:700;color:#111; }
+    .receipt-amount-box { background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:18px;text-align:center;margin:16px 0; }
+    .receipt-amount-label { font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px; }
+    .receipt-amount-value { font-size:36px;font-weight:800;color:#15803d; }
+    .receipt-footer { text-align:center;font-size:12px;color:#888;margin-top:8px;line-height:1.8; }
+
+    /* Tamil book-style receipt */
+    .ta-receipt { background:#fffef7; color:#1a1a1a; padding:26px 26px 20px; font-family:'Noto Sans Tamil','Inter',sans-serif; border:2px solid #1a1a1a; border-radius:4px; }
+    .ta-head { text-align:center; }
+    .ta-head .t1 { font-size:23px; font-weight:700; letter-spacing:.02em; }
+    .ta-head .t2 { font-size:11px; letter-spacing:.22em; color:#555; margin-top:2px; }
+    .ta-hr { border:none; border-top:1.5px solid #1a1a1a; margin:12px 0; }
+    .ta-hr-dot { border:none; border-top:1px dashed #999; margin:6px 0; }
+    .ta-meta { display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:6px; }
+    .ta-body { font-size:15.5px; line-height:2.35; color:#1a1a1a; }
+    .ta-fill { border-bottom:1px dotted #333; padding:0 6px; font-weight:600; }
+    .ta-amt { display:inline-block; border:1.5px solid #1a1a1a; border-radius:4px; padding:2px 10px; font-weight:700; font-size:16px; }
+    .ta-sign { display:flex; justify-content:space-between; align-items:flex-end; margin-top:22px; font-size:13.5px; }
+    .ta-sign .line { text-align:center; }
+    .ta-sign .line .rule { border-top:1px solid #1a1a1a; width:150px; margin-bottom:4px; }
+    .ta-foot { text-align:center; font-size:11px; color:#777; margin-top:14px; }
+    .ta-edit { background:#f8f9fb; border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; margin:0 0 12px; }
+    .ta-edit label { font-size:11px; font-weight:600; color:#555; display:block; margin-bottom:3px; }
+    .ta-edit input { width:100%; padding:7px 10px; font-size:14px; border:1px solid #d1d5db; border-radius:6px; font-family:'Noto Sans Tamil','Inter',sans-serif; margin-bottom:8px; }
+    .ta-edit .ta-note { font-size:11px; color:#888; }
+
+    /* Multi-month selector */
+    .month-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px; }
+    .month-chip { padding:6px 4px;border-radius:6px;border:1px solid var(--border);font-size:12px;text-align:center;cursor:pointer;background:var(--navy);color:var(--text-muted);transition:all .15s; }
+    .month-chip.selected { background:var(--accent-light);border-color:var(--accent);color:var(--accent);font-weight:500; }
   </style>
 </head>
 <body>
@@ -201,6 +246,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
@@ -368,10 +414,12 @@ async function readSheet(sheetName) {
 
 // Callers still pass a values ARRAY in HEADERS order; we zip it to a {name:value}
 // object so the gateway can place values by column name (position-independent).
+// Only the positions provided are mapped, so on update, columns the caller
+// didn't supply keep their current value (the gateway leaves them untouched).
 function zipRow(sheetName, values) {
   const h = HEADERS[sheetName] || [];
   const obj = {};
-  h.forEach((name, i) => { obj[name] = values[i] !== undefined ? values[i] : ''; });
+  values.forEach((v, i) => { if (h[i] !== undefined) obj[h[i]] = v; });
   return obj;
 }
 
@@ -615,6 +663,11 @@ const Icon = ({ name, size = 16 }) => {
     layers: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
     bell: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
     minus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    home: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+    users: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+    tool: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
+    zap: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+    external: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
   };
   return icons[name] || null;
 };
@@ -1567,6 +1620,1232 @@ function NLPQuery({ data, derived }) {
   } catch(e) {}
 })();
 
+// ── TAMIL RECEIPT HELPERS ─────────────────────────────────────────────────────
+const TA_MONTHS = { January:'ஜனவரி', February:'பிப்ரவரி', March:'மார்ச்', April:'ஏப்ரல்', May:'மே', June:'ஜூன்', July:'ஜூலை', August:'ஆகஸ்ட்', September:'செப்டம்பர்', October:'அக்டோபர்', November:'நவம்பர்', December:'டிசம்பர்' };
+const taMonth = (m) => TA_MONTHS[m] || m;
+const TA_METHODS = { 'Cash':'ரொக்கம்', 'UPI':'UPI (இணையப் பணம்)', 'Bank Transfer':'வங்கி பரிமாற்றம்', 'Cheque':'காசோலை', 'Card':'அட்டை மூலம்', 'Online':'இணையம் மூலம்' };
+const taMethod = (m) => TA_METHODS[m] || m || '—';
+
+// Transliterate the tenant name & address to Tamil script and write the amount in Tamil words,
+// using whichever AI key is configured. Returns { name, address, amountWords } or null if no key/failure.
+async function tamilizeReceipt({ name, address, amount }) {
+  const cfg = getConfig();
+  const key = cfg.geminiKey || '';
+  if (!key) return null;
+  const instruction = `You write Tamil rent receipts. Convert the following to Tamil and reply with ONLY a strict JSON object, no markdown, no extra text.
+Keys:
+- "name": the person's name in Tamil script (transliterate the sounds; do not translate).
+- "address": the address in Tamil script (transliterate proper nouns; translate common words like Street=தெரு, Road=சாலை, Nagar=நகர், House=வீடு, No=எண்).
+- "amountWords": the number ${amount} written in Tamil words for rupees, ending with "ரூபாய் மட்டும்".
+Input name: ${JSON.stringify(name||'')}
+Input address: ${JSON.stringify(address||'')}`;
+  const parse = (txt) => {
+    try { const m = txt.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; } catch { return null; }
+  };
+  try {
+    const isClaude = key.startsWith('sk-ant-');
+    if (isClaude) {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 500, messages: [{ role: 'user', content: instruction }] }),
+      });
+      if (!res.ok) return null;
+      const d = await res.json();
+      return parse(d.content?.[0]?.text || '');
+    } else {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: instruction }] }], generationConfig: { maxOutputTokens: 500, responseMimeType: 'application/json' } }),
+      });
+      if (!res.ok) return null;
+      const d = await res.json();
+      return parse(d.candidates?.[0]?.content?.parts?.[0]?.text || '');
+    }
+  } catch { return null; }
+}
+
+
+// ── RENT MODULE (copied from rent.html; wired to the rent sheet) ─────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const YEARS  = ['2022','2023','2024','2025','2026','2027'];
+function EditBtn({ onClick }) { return <button className="btn btn-secondary btn-sm" onClick={onClick} title="Edit">✏️</button>; }
+function SaveBtn({ onClick, saving }) { return <button className="btn btn-primary btn-sm" onClick={onClick} disabled={saving}>{saving?'…':'Save'}</button>; }
+
+function Properties({ data, onRefresh, onGoToRent }) {
+  const [mode, setMode]     = useState(null); // null | 'add' | {editing: row}
+  const [saving, setSaving] = useState(false);
+  const blank = { ID:'', Name:'', Address:'', Type:'Apartment', 'Rent Amount':'', Occupancy:'Occupied', Notes:'',
+    ebNum:'', taxNum:'', taxValue:'', waterNum:'', utilNotes:'',
+    tName:'', tPhone:'', tEmail:'', tAdvance:'', tMoveIn:'', tLastRentRevision:'', tNotes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p => ({...p, [k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (p) => {
+    const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+    setForm({ ...blank, ...p, ebNum: u['Electricity Number']||'', taxNum: u['Property Tax Number']||'', taxValue: u['Property Tax Value']||'', waterNum: u['Water Bill Number']||'', utilNotes: u['Notes']||'' });
+    setMode({ editing: p._row, utilRow: u._row, propId: p.ID });
+  };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form.Name || !form['Rent Amount']) { alert('Property name and rent amount required.'); return; }
+    setSaving(true);
+    try {
+      const id = (mode==='add') ? `P${Date.now()}` : form.ID;
+
+      if (mode === 'add') {
+        await appendRow('Properties', [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, new Date().toLocaleDateString('en-IN')]);
+        // utilities row
+        await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.taxValue||'', form.waterNum||'', form.utilNotes||'']);
+        // optional tenant
+        if (form.tName && form.tPhone) {
+          await appendRow('Tenants', [`T${Date.now()}`, id, form.tName, form.tPhone, form.tEmail||'', form.tAdvance||'', form.tMoveIn||'', 'Active', form.tNotes||'', form.tLastRentRevision||'']);
+        }
+      } else {
+        // update property row
+        await updateRow('Properties', mode.editing, [id, form.Name, form.Address, form.Type, form['Rent Amount'], form.Occupancy, form.Notes, form.Created||''], 8);
+        // update or create utilities row
+        if (mode.utilRow) {
+          await updateRow('Utilities', mode.utilRow, [id, form.ebNum||'', form.taxNum||'', form.taxValue||'', form.waterNum||'', form.utilNotes||''], 6);
+        } else {
+          await appendRow('Utilities', [id, form.ebNum||'', form.taxNum||'', form.taxValue||'', form.waterNum||'', form.utilNotes||'']);
+        }
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const isEditing = mode && mode.editing;
+  const showForm  = mode !== null;
+
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Properties</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Property</button>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{isEditing ? 'Edit Property' : 'New Property'}</div>
+          {/* Core property fields */}
+          <div className="form-grid">
+            <div className="form-group"><label>Property Name *</label><input placeholder="e.g. Chennai Flat 1" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
+            <div className="form-group"><label>Type</label>
+              <select value={form.Type} onChange={e=>f('Type',e.target.value)}>
+                <option>Apartment</option><option>House</option><option>Shop</option><option>Office</option><option>Land</option>
+              </select>
+            </div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input placeholder="Full address" value={form.Address} onChange={e=>f('Address',e.target.value)}/></div>
+            <div className="form-group"><label>Monthly Rent (₹) *</label><input type="number" placeholder="15000" value={form['Rent Amount']} onChange={e=>f('Rent Amount',e.target.value)}/></div>
+            <div className="form-group"><label>Occupancy Status</label>
+              <select value={form.Occupancy} onChange={e=>f('Occupancy',e.target.value)}>
+                <option value="Occupied">Occupied</option>
+                <option value="Vacant">Vacant</option>
+                <option value="NotApplicable">Not Applicable</option>
+                <option value="OwnUsage">Own Usage</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+
+          {/* Utility numbers */}
+          <div style={{margin:'16px 0 8px',fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em'}}>Utility Numbers</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Electricity Number</label><input placeholder="EB consumer no." value={form.ebNum} onChange={e=>f('ebNum',e.target.value)}/></div>
+            <div className="form-group"><label>Property Tax Number</label><input placeholder="Tax ref no." value={form.taxNum} onChange={e=>f('taxNum',e.target.value)}/></div>
+            <div className="form-group"><label>Property Tax Value (₹)</label><input type="number" placeholder="Annual tax amount" value={form.taxValue} onChange={e=>f('taxValue',e.target.value)}/></div>
+            <div className="form-group"><label>Water Bill Number</label><input placeholder="Water consumer no." value={form.waterNum} onChange={e=>f('waterNum',e.target.value)}/></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Utility Notes</label><input placeholder="e.g. EB office number, meter location..." value={form.utilNotes} onChange={e=>f('utilNotes',e.target.value)}/></div>
+          </div>
+
+          {/* Tenant details — only on add */}
+          {!isEditing && (
+            <>
+              <div style={{margin:'16px 0 8px',fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em'}}>Tenant Details <span style={{fontWeight:400,color:'var(--text-muted)'}}>(optional — can add later)</span></div>
+              <div className="form-grid">
+                <div className="form-group"><label>Tenant Name</label><input placeholder="Full name" value={form.tName} onChange={e=>f('tName',e.target.value)}/></div>
+                <div className="form-group"><label>Phone</label><input placeholder="9876543210" value={form.tPhone} onChange={e=>f('tPhone',e.target.value)}/></div>
+                <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.tEmail} onChange={e=>f('tEmail',e.target.value)}/></div>
+                <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.tAdvance} onChange={e=>f('tAdvance',e.target.value)}/></div>
+                <div className="form-group"><label>Move-in Date</label><input type="date" value={form.tMoveIn} onChange={e=>f('tMoveIn',e.target.value)}/></div>
+                <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form.tLastRentRevision} onChange={e=>f('tLastRentRevision',e.target.value)}/></div>
+                <div className="form-group"><label>Notes</label><input placeholder="Any notes" value={form.tNotes} onChange={e=>f('tNotes',e.target.value)}/></div>
+              </div>
+            </>
+          )}
+
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:isEditing?'Update Property':'Save Property'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {data.properties.length === 0
+        ? <div className="card"><div className="empty"><Icon name="home" size={40}/><p>No properties yet.</p></div></div>
+        : <div className="gap-12">
+            {data.properties.map(p => (
+              <PropCard key={p.ID} p={p} data={data} onEdit={openEdit} onGoToRent={onGoToRent}/>
+            ))}
+          </div>
+      }
+    </div>
+  );
+}
+
+function PropCard({ p, data, onEdit, onGoToRent }) {
+  const [open, setOpen] = useState(false);
+  const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
+  const tenant  = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
+  const allTens = data.tenants.filter(t => t['Property ID'] === p.ID);
+  const lastPaidRent = data.rent.filter(r=>r['Property ID']===p.ID&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+  const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+  const occIcon  = p.Occupancy==='Vacant'?'🔓':p.Occupancy==='OwnUsage'?'🏡':p.Occupancy==='NotApplicable'?'📋':'🏠';
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      {/* Header row — always visible */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background:open?'var(--surface-2)':'var(--surface)'}}
+        onClick={()=>setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{occIcon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{p.Name}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{p.Address||p.Type}</div>
+          </div>
+        </div>
+        <div className="prop-card-right" style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(p['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+            {lastPaidRent
+              ? <div style={{fontSize:11,marginTop:2}}>Last paid: <span style={{color:'var(--green)',fontWeight:600}}>{lastPaidRent.Month} {lastPaidRent.Year}</span></div>
+              : <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>No rent recorded</div>}
+          </div>
+          <span className={`badge ${occColor} prop-occ-badge-header`}>{p.Occupancy||'Occupied'}</span>
+          <EditBtn onClick={e=>{e.stopPropagation();onEdit(p);}}/>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'16px 18px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:14,marginBottom:16}}>
+          <div><div className="stat-label">Type</div><span className="badge badge-blue" style={{marginTop:4,display:'inline-block'}}>{p.Type}</span></div>
+          <div><div className="stat-label">Rent/Month</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:4}}>{fmtINR(p['Rent Amount'])}</div></div>
+          <div><div className="stat-label">Occupancy</div><span className={`badge ${occColor}`} style={{marginTop:4,display:'inline-block'}}>{p.Occupancy||'Occupied'}</span></div>
+          {p.Notes && <div><div className="stat-label">Notes</div><div style={{fontSize:13,marginTop:4,color:'var(--text-secondary)'}}>{p.Notes}</div></div>}
+          <div style={{display:'flex',alignItems:'flex-end'}}>
+            <button className="btn btn-secondary btn-sm" style={{gap:5}} onClick={e=>{e.stopPropagation();onGoToRent&&onGoToRent(p.ID);}}>
+              💰 View Rent History →
+            </button>
+          </div>
+        </div>
+
+        {/* Tenant section */}
+        <CollapsibleSection title={`👤 Tenants (${allTens.filter(t=>t.Status==='Active').length} active)`} defaultOpen={true}>
+          {allTens.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
+            : allTens.map(t=>(
+              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
+                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
+              </div>
+            ))
+          }
+        </CollapsibleSection>
+
+        {/* Utility section */}
+        <CollapsibleSection title="⚡ Utility Numbers" defaultOpen={true}>
+          <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{u['Electricity Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{u['Property Tax Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{u['Property Tax Value']?fmtINR(u['Property Tax Value']):'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{u['Water Bill Number']||'—'}</div></div>
+            {u['Notes']&&<div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{u['Notes']}</div></div>}
+          </div>
+        </CollapsibleSection>
+      </div>}
+    </div>
+  );
+}
+
+
+function Tenants({ data, onRefresh }) {
+  const [mode, setMode]     = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab]       = useState('active');
+  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'' };
+  const [form, setForm]     = useState(blank);
+  const f = (k,v) => setForm(p => ({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (t) => { setForm({...blank,...t}); setMode({editing:t._row, id:t.ID}); };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form['Property ID'] || !form.Name || !form.Phone) { alert('Property, name and phone required.'); return; }
+    setSaving(true);
+    try {
+      if (mode === 'add') {
+        // vacate existing active tenant for this property
+        for (const t of data.tenants.filter(t => t['Property ID'] === form['Property ID'] && t.Status === 'Active')) {
+          await updateRow('Tenants', t._row, [t.ID, t['Property ID'], t.Name, t.Phone, t.Email, t.Advance, t['Move In Date'], 'Vacated', t.Notes, t['Last Rent Revision']||''], 10);
+        }
+        await appendRow('Tenants', [`T${Date.now()}`, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', 'Active', form.Notes||'', form['Last Rent Revision']||'']);
+        // mark property occupied
+        const prop = data.properties.find(p => p.ID === form['Property ID']);
+        if (prop) await updateRow('Properties', prop._row, [prop.ID, prop.Name, prop.Address, prop.Type, prop['Rent Amount'], 'Occupied', prop.Notes, prop.Created||''], 8);
+      } else {
+        await updateRow('Tenants', mode.editing, [mode.id, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', form.Status||'Active', form.Notes||'', form['Last Rent Revision']||''], 10);
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const filtered = data.tenants.filter(t => tab==='active' ? t.Status==='Active' : t.Status!=='Active');
+
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Tenants</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Tenant</button>
+      </div>
+
+      {mode !== null && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{mode==='add'?'New Tenant':'Edit Tenant'}</div>
+          {mode==='add' && <div style={{fontSize:12,color:'var(--gold)',marginBottom:12,padding:'8px 12px',background:'rgba(245,158,11,.08)',borderRadius:6,border:'1px solid rgba(245,158,11,.2)'}}>Existing active tenant for this property will be auto-vacated.</div>}
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Tenant Name *</label><input placeholder="Full name" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
+            <div className="form-group"><label>Phone *</label><input placeholder="9876543210" value={form.Phone} onChange={e=>f('Phone',e.target.value)}/></div>
+            <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.Email} onChange={e=>f('Email',e.target.value)}/></div>
+            <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.Advance} onChange={e=>f('Advance',e.target.value)}/></div>
+            <div className="form-group"><label>Move-in Date</label><input type="date" value={form['Move In Date']} onChange={e=>f('Move In Date',e.target.value)}/></div>
+            <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form['Last Rent Revision']} onChange={e=>f('Last Rent Revision',e.target.value)}/></div>
+            {mode!=='add' && <div className="form-group"><label>Status</label>
+              <select value={form.Status||'Active'} onChange={e=>f('Status',e.target.value)}>
+                <option>Active</option><option>Vacated</option>
+              </select>
+            </div>}
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="Any notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:mode==='add'?'Save Tenant':'Update Tenant'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="tabs">
+        <button className={`tab ${tab==='active'?'active':''}`} onClick={()=>setTab('active')}>Active ({data.tenants.filter(t=>t.Status==='Active').length})</button>
+        <button className={`tab ${tab==='past'?'active':''}`} onClick={()=>setTab('past')}>Past ({data.tenants.filter(t=>t.Status!=='Active').length})</button>
+      </div>
+
+      <div className="card">
+        {filtered.length===0 ? <div className="empty"><p>No {tab} tenants.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Last Rent Revision</th><th>Last Rent Paid</th><th>Status</th><th></th></tr></thead>
+          <tbody>{filtered.map(t => {
+            const prop = data.properties.find(p => p.ID === t['Property ID']);
+            const lastPaidRent = data.rent.filter(r=>r['Property ID']===t['Property ID']&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            return (<tr key={t.ID}>
+              <td className="name">{t.Name}</td>
+              <td>{prop?prop.Name:t['Property ID']}</td>
+              <td className="mono">{t.Phone}</td>
+              <td className="mono">{fmtINR(t.Advance)}</td>
+              <td style={{color:'var(--text-muted)'}}>{t['Move In Date']}</td>
+              <td style={{color: t['Last Rent Revision'] ? 'var(--gold)' : 'var(--text-muted)'}}>{t['Last Rent Revision']||'—'}</td>
+              <td style={{color: lastPaidRent ? 'var(--green)' : 'var(--text-muted)',fontWeight: lastPaidRent?600:400}}>{lastPaidRent ? `${lastPaidRent.Month} ${lastPaidRent.Year}` : '—'}</td>
+              <td><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></td>
+              <td><EditBtn onClick={()=>openEdit(t)}/></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── RECEIPT MODAL ─────────────────────────────────────────────────────────────
+function ReceiptModal({ receipt, onClose }) {
+  const receiptRef = useRef();
+  const [generating, setGenerating] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+
+  const recNum = receipt.receiptId || ('REC' + Math.floor(10000000 + Math.random()*90000000));
+  const now    = new Date();
+  const genTime = now.toLocaleDateString('en-IN') + ' at ' + now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  const amountStr = Number(receipt.totalAmount).toLocaleString('en-IN');
+
+  const monthLabelTa = receipt.months.length === 1
+    ? `${taMonth(receipt.months[0].month)} ${receipt.months[0].year}`
+    : `${taMonth(receipt.months[0].month)} ${receipt.months[0].year} முதல் ${taMonth(receipt.months[receipt.months.length-1].month)} ${receipt.months[receipt.months.length-1].year} வரை`;
+
+  // Tamil name / address / amount-in-words — auto-filled by AI (falls back to English/blank), editable.
+  const [ta, setTa] = useState({ name: receipt.tenantName || '', address: receipt.address || '', amountWords: '' });
+  const [taState, setTaState] = useState('idle'); // idle | loading | done | error
+
+  const runTamilize = async () => {
+    setTaState('loading');
+    const res = await tamilizeReceipt({ name: receipt.tenantName, address: receipt.address, amount: receipt.totalAmount });
+    if (res && (res.name || res.address || res.amountWords)) {
+      setTa(p => ({ name: res.name || p.name, address: res.address || p.address, amountWords: res.amountWords || p.amountWords }));
+      setTaState('done');
+    } else { setTaState(getConfig().geminiKey ? 'error' : 'nokey'); }
+  };
+  useEffect(() => { runTamilize(); }, []); // eslint-disable-line
+
+  const captureAndShare = async () => {
+    setGenerating(true);
+    try {
+      const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        // Open image in new tab for saving / sharing
+        const imgWin = window.open('', '_blank');
+        imgWin.document.write(`
+          <html><head><title>Rent Receipt</title>
+          <meta name="viewport" content="width=device-width,initial-scale=1"/>
+          <style>body{margin:0;background:#f3f4f6;display:flex;flex-direction:column;align-items:center;padding:16px;font-family:sans-serif;}
+          img{max-width:100%;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.15);}
+          .bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;justify-content:center;}
+          .btn{padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;}
+          .wa{background:#25d366;color:#fff;}.dl{background:#2563eb;color:#fff;}</style></head>
+          <body>
+          <div class="bar">
+            <button class="btn wa" onclick="openWA()">📲 Send on WhatsApp</button>
+            <button class="btn dl" onclick="dl()">⬇️ Download Image</button>
+          </div>
+          <img id="img" src="${url}"/>
+          <script>
+            const phone='${receipt.phone}'.replace(/\\D/g,'');
+            const intlPhone=phone.startsWith('91')?phone:'91'+phone;
+            function openWA(){
+              const isMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
+              const waUrl=isMobile
+                ?'whatsapp://send?phone='+intlPhone
+                :'https://web.whatsapp.com/send?phone='+intlPhone;
+              window.open(waUrl,'_blank');
+              alert('WhatsApp opened!\\n\\nSteps:\\n1. Download the image below\\n2. Attach it in the WhatsApp chat');
+            }
+            function dl(){
+              const a=document.createElement('a');
+              a.href='${url}';
+              a.download='rent-receipt-${receipt.tenantName.replace(/\\s+/g,'-')}.png';
+              a.click();
+            }
+          <\/script></body></html>`);
+        imgWin.document.close();
+        setGenerating(false);
+      }, 'image/png');
+    } catch(e) { alert('Error generating receipt: '+e.message); setGenerating(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box">
+        {/* Editable Tamil details (not part of the captured image) */}
+        <div style={{padding:'14px 14px 0'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>
+              பெயர் & முகவரி (தமிழில்) {taState==='loading' && <span style={{color:'#6b7280',fontWeight:400}}>· மொழிபெயர்க்கிறது…</span>}
+              {taState==='nokey' && <span style={{color:'#b45309',fontWeight:400,fontSize:11}}> · AI key இல்லை — கீழே தட்டச்சு செய்யவும்</span>}
+              {taState==='error' && <span style={{color:'#b91c1c',fontWeight:400,fontSize:11}}> · மொழிபெயர்ப்பு தோல்வி — கைமுறையாக திருத்தவும்</span>}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-secondary btn-sm" onClick={runTamilize} disabled={taState==='loading'}>🔁 மீண்டும்</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setShowEdit(o=>!o)}>{showEdit?'மறை':'✎ திருத்து'}</button>
+            </div>
+          </div>
+          {showEdit && <div className="ta-edit">
+            <label>பெயர் (Name in Tamil)</label>
+            <input value={ta.name} onChange={e=>setTa(p=>({...p,name:e.target.value}))} placeholder="திரு / திருமதி பெயர்"/>
+            <label>முகவரி (Address in Tamil)</label>
+            <input value={ta.address} onChange={e=>setTa(p=>({...p,address:e.target.value}))} placeholder="முகவரி"/>
+            <label>தொகை எழுத்தில் (Amount in words)</label>
+            <input value={ta.amountWords} onChange={e=>setTa(p=>({...p,amountWords:e.target.value}))} placeholder="எ.கா. பதினைந்து ஆயிரம் ரூபாய் மட்டும்"/>
+            <div className="ta-note">இந்த விவரங்கள் கீழே உள்ள ரசீதில் நிரப்பப்படும்.</div>
+          </div>}
+        </div>
+
+        {/* Tamil book-style receipt — captured as image */}
+        <div style={{padding:'8px 14px 0'}}>
+        <div ref={receiptRef} className="ta-receipt">
+          <div className="ta-head">
+            <div className="t1">வாடகை ரசீது</div>
+            <div className="t2">RENT RECEIPT</div>
+          </div>
+          <hr className="ta-hr"/>
+          <div className="ta-meta">
+            <span>ரசீது எண்: <b>{recNum}</b></span>
+            <span>தேதி: <b>{receipt.paidDate || genTime.split(' at ')[0]}</b></span>
+          </div>
+          <hr className="ta-hr-dot"/>
+          <div className="ta-body">
+            <div>திரு / திருமதி <span className="ta-fill">{ta.name || '—'}</span> அவர்களிடமிருந்து,</div>
+            <div><span className="ta-fill">{ta.address || '—'}</span> என்ற முகவரியில் உள்ள வீடு / கடையின்</div>
+            <div><span className="ta-fill">{monthLabelTa}</span> மாதத்திற்கான வாடகைத் தொகையாக,</div>
+            <div>ரூ. <span className="ta-amt">₹ {amountStr}</span> {ta.amountWords ? <>( <span className="ta-fill">{ta.amountWords}</span> )</> : null}</div>
+            <div><span className="ta-fill">{taMethod(receipt.paymentMethod)}</span> மூலம் பெறப்பட்டது.</div>
+          </div>
+          <hr className="ta-hr-dot"/>
+          <div className="ta-sign">
+            <div>நன்றி 🙏</div>
+            <div className="line"><div className="rule"/>பெற்றவர் கையொப்பம்</div>
+          </div>
+          <div className="ta-foot">ரசீது #{recNum} · உருவாக்கப்பட்டது {genTime}</div>
+        </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-primary" style={{flex:1,justifyContent:'center',background:'#25d366'}} onClick={captureAndShare} disabled={generating}>
+            {generating ? <><span className="spinner"/>&nbsp;உருவாக்குகிறது...</> : '📲 ரசீது உருவாக்கி WhatsApp அனுப்பு'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>மூடு</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RENT ─────────────────────────────────────────────────────────────────────
+function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
+  const [mode, setMode]      = useState(null);
+  const [saving, setSaving]  = useState(false);
+  const [receipt, setReceipt]= useState(null);
+  const cashReserves = (derived?.reserves || []).filter(r => r.kind === 'Cash').map(r => r.name);
+  const [viewTab, setViewTab]= useState(initialPropId ? 'property' : 'month');
+  const [filterProp, setFilterProp] = useState(initialPropId || '');
+
+  useEffect(() => {
+    if (initialPropId) { setViewTab('property'); setFilterProp(initialPropId); onClearTarget&&onClearTarget(); }
+  }, [initialPropId]);
+  const [filterMonth, setFM] = useState(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).toLocaleString('en-IN',{month:'long'}));
+  const [filterYear,  setFY] = useState(String(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).getFullYear()));
+
+  const _now       = new Date();
+  const _lastMonth = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+  const curMonth   = _lastMonth.toLocaleString('en-IN',{month:'long'});
+  const curYear    = String(_lastMonth.getFullYear());
+
+  // blank form — selectedMonths is array of {month, year}
+  const blank = {
+    'Property ID':'', selectedMonths:[], perMonthAmount:'',
+    totalAmount:'', 'Paid Date': new Date().toISOString().split('T')[0],
+    Status:'Paid', paymentMethod:'Cash', receivedReserve:'Cash', Notes:''
+  };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  // For edit — single month mode
+  const blankEdit = { 'Property ID':'', Month:curMonth, Year:curYear, Amount:'', 'Paid Date': new Date().toISOString().split('T')[0], Status:'Paid', paymentMethod:'Cash', Notes:'' };
+  const [editForm, setEditForm] = useState(blankEdit);
+  const ef = (k,v) => setEditForm(p=>({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (r) => { setEditForm({...blankEdit,...r, paymentMethod: r.paymentMethod||'Cash'}); setMode({editing:r._row, id:r.ID}); };
+
+  // Toggle month selection in grid
+  const toggleMonth = (month, year) => {
+    const key = `${month}|${year}`;
+    const exists = form.selectedMonths.find(m => `${m.month}|${m.year}` === key);
+    let updated;
+    if (exists) {
+      updated = form.selectedMonths.filter(m => `${m.month}|${m.year}` !== key);
+    } else {
+      updated = [...form.selectedMonths, {month, year}];
+    }
+    const total = updated.length * Number(form.perMonthAmount||0);
+    setForm(p=>({...p, selectedMonths:updated, totalAmount: total||''}));
+  };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form['Property ID'] || form.selectedMonths.length===0 || !form.perMonthAmount) {
+      alert('Select property, at least one month, and per-month amount.'); return;
+    }
+    const _prop = data.properties.find(p=>p.ID===form['Property ID']);
+    const _rentAmt = Number(_prop?.['Rent Amount']||0);
+    if (_rentAmt > 0) {
+      for (const {month, year} of form.selectedMonths) {
+        const alreadyPaid = data.rent
+          .filter(r=>r['Property ID']===form['Property ID']&&r.Month===month&&String(r.Year)===String(year)&&(r.Status==='Paid'||r.Status==='Partial'))
+          .reduce((s,r)=>s+Number(r.Amount||0),0);
+        const remaining = _rentAmt - alreadyPaid;
+        if (Number(form.perMonthAmount) > remaining) {
+          alert(`Cannot exceed rent for ${month} ${year}.\nRent: ₹${_rentAmt.toLocaleString('en-IN')}\nAlready recorded: ₹${alreadyPaid.toLocaleString('en-IN')}\nMax you can add: ₹${Math.max(0,remaining).toLocaleString('en-IN')}`);
+          return;
+        }
+      }
+    }
+    setSaving(true);
+    try {
+      const tenant = data.tenants.find(t => t['Property ID']===form['Property ID'] && t.Status==='Active');
+      const collecting = (form.Status==='Paid' || form.Status==='Partial') && num(form.perMonthAmount) > 0;
+      // Create one row per month, and post the received money into the chosen reserve
+      for (const {month, year} of form.selectedMonths) {
+        const rentId = `R${Date.now()}${Math.random().toString(36).slice(2,5)}`;
+        await appendRow('Rent', [
+          rentId, form['Property ID'], tenant?.ID||'', month, year,
+          form.perMonthAmount, form['Paid Date'], form.Status,
+          form.Notes + (form.selectedMonths.length>1 ? ` [Bulk payment: ${form.selectedMonths.length} months]` : ''),
+          form.paymentMethod||'Cash', collecting ? form.receivedReserve : ''
+        ]);
+        if (collecting) {
+          await addEntry('RENT-'+rentId, form['Paid Date'], {
+            reserve: form.receivedReserve, direction: 'In', qty: num(form.perMonthAmount), value: num(form.perMonthAmount),
+            counterparty: tenant?.Name || '', category: 'Rent', ref: rentId, notes: `Rent ${month} ${year}`,
+          });
+        }
+      }
+      // Prepare receipt data
+      const prop = data.properties.find(p=>p.ID===form['Property ID']);
+      const receiptData = {
+        receiptId: `R${Date.now()}`,
+        tenantName: tenant?.Name || 'Tenant',
+        phone: tenant?.Phone || '',
+        address: prop?.Address || prop?.Name || '',
+        months: form.selectedMonths,
+        paidDate: new Date(form['Paid Date']).toLocaleDateString('en-IN'),
+        paymentMethod: form.paymentMethod,
+        totalAmount: form.totalAmount || (form.selectedMonths.length * Number(form.perMonthAmount)),
+        perMonthAmount: form.perMonthAmount,
+      };
+      setMode(null);
+      onRefresh();
+      if (withReceipt) setReceipt(receiptData);
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const handleEditSave = async () => {
+    if (!editForm['Property ID']||!editForm.Amount) { alert('Property and amount required.'); return; }
+    const _eProp = data.properties.find(p=>p.ID===editForm['Property ID']);
+    const _eRentAmt = Number(_eProp?.['Rent Amount']||0);
+    if (_eRentAmt > 0) {
+      const alreadyPaid = data.rent
+        .filter(r=>r['Property ID']===editForm['Property ID']&&r.Month===editForm.Month&&String(r.Year)===String(editForm.Year)&&r.ID!==mode.id&&(r.Status==='Paid'||r.Status==='Partial'))
+        .reduce((s,r)=>s+Number(r.Amount||0),0);
+      const remaining = _eRentAmt - alreadyPaid;
+      if (Number(editForm.Amount) > remaining) {
+        alert(`Cannot exceed rent for ${editForm.Month} ${editForm.Year}.\nRent: ₹${_eRentAmt.toLocaleString('en-IN')}\nOther entries: ₹${alreadyPaid.toLocaleString('en-IN')}\nMax allowed: ₹${Math.max(0,remaining).toLocaleString('en-IN')}`);
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      const tenant = data.tenants.find(t=>t['Property ID']===editForm['Property ID']&&t.Status==='Active');
+      await updateRow('Rent', mode.editing, [mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year, editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes, editForm.paymentMethod||'Cash'], 10);
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const showReceiptForRow = (r) => {
+    const prop   = data.properties.find(p=>p.ID===r['Property ID']);
+    const tenant = data.tenants.find(t=>t.ID===r['Tenant ID']) || data.tenants.find(t=>t['Property ID']===r['Property ID']&&t.Status==='Active');
+    setReceipt({
+      receiptId: r.ID,
+      tenantName: tenant?.Name||'Tenant',
+      phone: tenant?.Phone||'',
+      address: prop?.Address||prop?.Name||'',
+      months: [{month:r.Month, year:r.Year}],
+      paidDate: r['Paid Date']||new Date().toLocaleDateString('en-IN'),
+      paymentMethod: r['Payment Method']||r.paymentMethod||'Cash',
+      totalAmount: r.Amount,
+      perMonthAmount: r.Amount,
+    });
+  };
+
+  // Build 12-month rolling grid for current+past year
+  const monthGrid = [];
+  for (const yr of [String(Number(curYear)-1), curYear]) {
+    for (const mo of MONTHS) { monthGrid.push({month:mo, year:yr}); }
+  }
+
+  const filtered = data.rent.filter(r=>r.Month===filterMonth && String(r.Year)===filterYear);
+  const total    = filtered.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+  const paidIds  = filtered.filter(r=>r.Status==='Paid').map(r=>r['Property ID']);
+  const notPaid  = data.properties.filter(p=>!paidIds.includes(p.ID)&&p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage');
+
+  return (
+    <div>
+      {receipt && <ReceiptModal receipt={receipt} onClose={()=>setReceipt(null)}/>}
+
+      <div className="section-row">
+        <h3>Rent</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Record Rent</button>
+      </div>
+
+      {/* ADD FORM — multi-month */}
+      {mode==='add' && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">Record Rent Payment</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={form['Property ID']} onChange={e=>{
+                const prop=data.properties.find(p=>p.ID===e.target.value);
+                const amt = prop?.['Rent Amount']||'';
+                const total2 = form.selectedMonths.length * Number(amt);
+                setForm(p=>({...p,'Property ID':e.target.value, perMonthAmount:amt, totalAmount:total2||''}));
+              }}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+              {/* Tenant confirmation strip */}
+              {form['Property ID'] && (()=>{
+                const t = data.tenants.find(t=>t['Property ID']===form['Property ID']&&t.Status==='Active');
+                return t
+                  ? <div style={{marginTop:6,padding:'8px 12px',background:'var(--green-light)',border:'1px solid rgba(16,185,129,.25)',borderRadius:6,display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+                      <span style={{fontSize:12,fontWeight:600,color:'var(--green)'}}>✓ Active Tenant</span>
+                      <span style={{fontSize:13,fontWeight:500,color:'var(--text-primary)'}}>{t.Name}</span>
+                      <span className="mono" style={{fontSize:13,color:'var(--text-secondary)'}}>{t.Phone}</span>
+                    </div>
+                  : <div style={{marginTop:6,padding:'8px 12px',background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:6,fontSize:12,color:'var(--red)'}}>
+                      ⚠️ No active tenant for this property
+                    </div>;
+              })()}
+            </div>
+            <div className="form-group"><label>Per Month Amount (₹) *</label>
+              <input type="number" value={form.perMonthAmount} onChange={e=>{
+                const amt=e.target.value;
+                const total2=form.selectedMonths.length*Number(amt||0);
+                setForm(p=>({...p,perMonthAmount:amt,totalAmount:total2||''}));
+              }}/>
+            </div>
+            <div className="form-group"><label>Paid Date</label><input type="date" value={form['Paid Date']} onChange={e=>f('Paid Date',e.target.value)}/></div>
+            <div className="form-group"><label>Status</label>
+              <select value={form.Status} onChange={e=>f('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
+            </div>
+            <div className="form-group"><label>Payment Method</label>
+              <select value={form.paymentMethod} onChange={e=>f('paymentMethod',e.target.value)}>
+                <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Received Into <span style={{color:'var(--text-muted)'}}>reserve</span></label>
+              <select value={form.receivedReserve} onChange={e=>f('receivedReserve',e.target.value)}>
+                {cashReserves.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input placeholder="Optional notes" value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+
+          {/* Month selector grid */}
+          <div style={{marginTop:16}}>
+            <div style={{fontSize:12,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>
+              Select Month(s) * &nbsp;
+              <span style={{fontWeight:400,color:'var(--text-muted)'}}>— tap multiple for bulk payment</span>
+            </div>
+            {(()=>{
+              const _gProp = data.properties.find(p=>p.ID===form['Property ID']);
+              const _gRent = Number(_gProp?.['Rent Amount']||0);
+              const _paidMap = {};
+              if (form['Property ID']) {
+                data.rent.filter(r=>r['Property ID']===form['Property ID']&&(r.Status==='Paid'||r.Status==='Partial'))
+                  .forEach(r=>{const k=`${r.Month}|${r.Year}`;_paidMap[k]=(_paidMap[k]||0)+Number(r.Amount||0);});
+              }
+              return <>
+                <div className="month-year-grid" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                  {[String(Number(curYear)-1), curYear].map(yr=>(
+                    <div key={yr}>
+                      <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:600}}>{yr}</div>
+                      <div className="month-grid">
+                        {MONTHS.map(mo=>{
+                          const sel=form.selectedMonths.find(m=>m.month===mo&&m.year===yr);
+                          const paid=_paidMap[`${mo}|${yr}`]||0;
+                          const isFull=_gRent>0&&paid>=_gRent;
+                          const isPartial=_gRent>0&&paid>0&&paid<_gRent;
+                          return <div key={mo}
+                            className={`month-chip ${sel?'selected':''}`}
+                            style={isFull?{opacity:.55,cursor:'not-allowed',background:'rgba(16,185,129,.12)',border:'1px solid var(--green)'}:isPartial?{border:'1px solid var(--gold)'}:{}}
+                            title={paid>0?`Paid: ₹${paid.toLocaleString('en-IN')}${_gRent?` | Remaining: ₹${Math.max(0,_gRent-paid).toLocaleString('en-IN')}`:''}`:''}
+                            onClick={()=>!isFull&&toggleMonth(mo,yr)}>
+                            <span>{mo.slice(0,3)}</span>
+                            {isPartial&&<span style={{display:'block',fontSize:8,lineHeight:1.2,color:'var(--gold)',marginTop:1}}>partial</span>}
+                            {isFull&&<span style={{display:'block',fontSize:8,lineHeight:1.2,color:'var(--green)',marginTop:1}}>✓ full</span>}
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {form.selectedMonths.length>0 && (()=>{
+                  const warnings = _gRent>0 ? form.selectedMonths.map(({month,year})=>{
+                    const paid=_paidMap[`${month}|${year}`]||0;
+                    return paid>0?{month,year,paid,remaining:_gRent-paid}:null;
+                  }).filter(Boolean) : [];
+                  return <>
+                    <div style={{marginTop:10,padding:'8px 14px',background:'var(--green-light)',borderRadius:6,fontSize:13,color:'var(--green)',fontWeight:500}}>
+                      {form.selectedMonths.length} month{form.selectedMonths.length>1?'s':''} selected
+                      {form.selectedMonths.length>1 && form.perMonthAmount ? ` — Total: ₹${(form.selectedMonths.length*Number(form.perMonthAmount)).toLocaleString('en-IN')}` : ''}
+                    </div>
+                    {warnings.map(w=>(
+                      <div key={`${w.month}|${w.year}`} style={{marginTop:6,padding:'6px 14px',background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',borderRadius:6,fontSize:12,color:'var(--gold)'}}>
+                        ⚠️ {w.month} {w.year}: ₹{w.paid.toLocaleString('en-IN')} already paid — ₹{Math.max(0,w.remaining).toLocaleString('en-IN')} remaining
+                      </div>
+                    ))}
+                  </>;
+                })()}
+              </>;
+            })()}
+          </div>
+
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={()=>handleSave(false)} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Save'}</button>
+            <button className="btn btn-primary" style={{background:'#25d366'}} onClick={()=>handleSave(true)} disabled={saving}>🧾 Save &amp; Generate Receipt</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT FORM — single month */}
+      {mode && mode.editing && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">Edit Rent Record</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={editForm['Property ID']} onChange={e=>ef('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Month</label>
+              <select value={editForm.Month} onChange={e=>ef('Month',e.target.value)}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+            </div>
+            <div className="form-group"><label>Year</label>
+              <select value={editForm.Year} onChange={e=>ef('Year',e.target.value)}>{YEARS.map(y=><option key={y}>{y}</option>)}</select>
+            </div>
+            <div className="form-group"><label>Amount (₹) *</label>
+              <input type="number" value={editForm.Amount} onChange={e=>ef('Amount',e.target.value)}/>
+              {editForm['Property ID'] && editForm.Month && editForm.Year && (()=>{
+                const _ep=data.properties.find(p=>p.ID===editForm['Property ID']);
+                const _er=Number(_ep?.['Rent Amount']||0);
+                if(!_er) return null;
+                const _oth=data.rent.filter(r=>r['Property ID']===editForm['Property ID']&&r.Month===editForm.Month&&String(r.Year)===String(editForm.Year)&&r.ID!==mode.id&&(r.Status==='Paid'||r.Status==='Partial')).reduce((s,r)=>s+Number(r.Amount||0),0);
+                const _rem=_er-_oth;
+                return <div style={{marginTop:5,fontSize:12,color:_oth>0?'var(--gold)':'var(--text-muted)'}}>
+                  Rent: ₹{_er.toLocaleString('en-IN')}{_oth>0?` | Other entries: ₹${_oth.toLocaleString('en-IN')} | Max: ₹${Math.max(0,_rem).toLocaleString('en-IN')}`:` | Max: ₹${_er.toLocaleString('en-IN')}`}
+                </div>;
+              })()}
+            </div>
+            <div className="form-group"><label>Paid Date</label><input type="date" value={editForm['Paid Date']} onChange={e=>ef('Paid Date',e.target.value)}/></div>
+            <div className="form-group"><label>Status</label>
+              <select value={editForm.Status} onChange={e=>ef('Status',e.target.value)}><option>Paid</option><option>Partial</option><option>Pending</option></select>
+            </div>
+            <div className="form-group"><label>Payment Method</label>
+              <select value={editForm.paymentMethod||'Cash'} onChange={e=>ef('paymentMethod',e.target.value)}>
+                <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Notes</label><input value={editForm.Notes} onChange={e=>ef('Notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleEditSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:'Update'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── VIEW TABS ── */}
+      <div className="tabs" style={{marginBottom:16}}>
+        <button className={`tab ${viewTab==='month'?'active':''}`} onClick={()=>setViewTab('month')}>📅 Month View</button>
+        <button className={`tab ${viewTab==='property'?'active':''}`} onClick={()=>setViewTab('property')}>🏠 Property View</button>
+      </div>
+
+      {/* ── MONTH VIEW ── */}
+      {viewTab==='month' && (<>
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,flex:'1 1 auto',minWidth:120}} value={filterMonth} onChange={e=>setFM(e.target.value)}>
+            {MONTHS.map(m=><option key={m}>{m}</option>)}
+          </select>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,minWidth:80}} value={filterYear} onChange={e=>setFY(e.target.value)}>
+            {YEARS.map(y=><option key={y}>{y}</option>)}
+          </select>
+          <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)',marginLeft:'auto',whiteSpace:'nowrap'}}>Collected: {fmtINR(total)}</div>
+        </div>
+        {notPaid.length>0 && (
+          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:13}}>
+            <span style={{color:'var(--red)',fontWeight:500}}>Pending: </span>
+            <span style={{color:'var(--text-secondary)'}}>{notPaid.map(p=>p.Name).join(', ')}</span>
+          </div>
+        )}
+        <div className="card">
+          {filtered.length===0 ? <div className="empty"><p>No rent records for {filterMonth} {filterYear}.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+            <tbody>{filtered.map(r=>{
+              const prop=data.properties.find(p=>p.ID===r['Property ID']);
+              const tenant=data.tenants.find(t=>t.ID===r['Tenant ID']);
+              return (<tr key={r.ID}>
+                <td className="name">{prop?prop.Name:r['Property ID']}</td>
+                <td>{tenant?tenant.Name:'—'}</td>
+                <td>{r.Month} {r.Year}</td>
+                <td className="mono">{fmtINR(r.Amount)}</td>
+                <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                <td style={{display:'flex',gap:4}}>
+                  <EditBtn onClick={()=>openEdit(r)}/>
+                  <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>showReceiptForRow(r)}>🧾</button>
+                </td>
+              </tr>);
+            })}</tbody>
+          </table></div>}
+        </div>
+      </>)}
+
+      {/* ── PROPERTY VIEW ── */}
+      {viewTab==='property' && (<>
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,minWidth:200}}
+            value={filterProp} onChange={e=>setFilterProp(e.target.value)}>
+            <option value="">— Select a property —</option>
+            {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+          </select>
+          {filterProp && (()=>{
+            const _lp = data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            return <div style={{marginLeft:'auto',display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+              {_lp && <div style={{fontSize:12,color:'var(--text-muted)'}}>Last paid: <span style={{color:'var(--gold)',fontWeight:600}}>{_lp.Month} {_lp.Year}</span></div>}
+              <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>Total collected: {fmtINR(data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0))}</div>
+            </div>;
+          })()}
+        </div>
+
+        {!filterProp && <div className="card"><div className="empty"><p>Select a property above to see its rent history.</p></div></div>}
+
+        {filterProp && (()=>{
+          const prop    = data.properties.find(p=>p.ID===filterProp);
+          const tenant  = data.tenants.find(t=>t['Property ID']===filterProp&&t.Status==='Active');
+          const propRent= data.rent.filter(r=>r['Property ID']===filterProp).sort((a,b)=>{
+            const ya=Number(a.Year),yb=Number(b.Year);
+            if(ya!==yb) return yb-ya;
+            return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
+          });
+          const totalPaid  = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+          const lastPaid   = propRent.find(r=>r.Status==='Paid');
+          return (<>
+            {/* Property summary card */}
+            <div className="card" style={{marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:16}}>
+                <div>
+                  <div className="stat-label">Property</div>
+                  <div style={{fontWeight:600,fontSize:15,marginTop:4}}>{prop?.Name}</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{prop?.Address}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Current Tenant</div>
+                  <div style={{fontWeight:500,fontSize:14,marginTop:4}}>{tenant?tenant.Name:<span style={{color:'var(--text-muted)'}}>Vacant</span>}</div>
+                  {tenant&&<div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{tenant.Phone}</div>}
+                </div>
+                <div>
+                  <div className="stat-label">Monthly Rent</div>
+                  <div className="mono" style={{fontSize:18,color:'var(--green)',marginTop:4}}>{fmtINR(prop?.['Rent Amount'])}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Total Collected</div>
+                  <div className="mono" style={{fontSize:18,color:'var(--green)',marginTop:4}}>{fmtINR(totalPaid)}</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{propRent.length} record{propRent.length!==1?'s':''}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Last Payment</div>
+                  <div style={{fontSize:13,marginTop:4}}>{lastPaid?`${lastPaid.Month} ${lastPaid.Year}`:<span style={{color:'var(--text-muted)'}}>—</span>}</div>
+                  {lastPaid&&<div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{fmtINR(lastPaid.Amount)}</div>}
+                </div>
+                <div>
+                  <div className="stat-label">Last Rent Revision</div>
+                  <div style={{fontSize:13,color:'var(--gold)',marginTop:4}}>{tenant?.['Last Rent Revision']||<span style={{color:'var(--text-muted)'}}>—</span>}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Full rent history */}
+            <div className="card">
+              <div className="card-title">Rent History</div>
+              {propRent.length===0
+                ? <div className="empty"><p>No rent records for this property.</p></div>
+                : <div className="table-wrap"><table>
+                    <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+                    <tbody>{propRent.map(r=>(
+                      <tr key={r.ID}>
+                        <td className="name">{r.Month}</td>
+                        <td className="mono">{r.Year}</td>
+                        <td className="mono">{fmtINR(r.Amount)}</td>
+                        <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                        <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                        <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                        <td style={{color:'var(--text-muted)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                        <td style={{display:'flex',gap:4}}>
+                          <EditBtn onClick={()=>openEdit(r)}/>
+                          <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>showReceiptForRow(r)}>🧾</button>
+                        </td>
+                      </tr>
+                    ))}</tbody>
+                  </table></div>
+              }
+            </div>
+          </>);
+        })()}
+      </>)}
+    </div>
+  );
+}
+
+
+// ── PROPERTY RENT CARD (used in Rent → Property View) ───────────────────────
+function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
+  const [open,        setOpen]        = useState(false);
+  const [tenantOpen,  setTenantOpen]  = useState(false);
+  const [utilityOpen, setUtilityOpen] = useState(false);
+  const [rentOpen,    setRentOpen]    = useState(true);
+
+  const tenant     = data.tenants.find(t=>t['Property ID']===prop.ID&&t.Status==='Active');
+  const allTenants = data.tenants.filter(t=>t['Property ID']===prop.ID);
+  const utility    = data.utilities.find(u=>u['Property ID']===prop.ID)||{};
+  const propRent   = data.rent.filter(r=>r['Property ID']===prop.ID).sort((a,b)=>{
+    const ya=Number(a.Year),yb=Number(b.Year);
+    if(ya!==yb) return yb-ya;
+    return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
+  });
+  const totalPaid = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
+  const lastPaid  = propRent.find(r=>r.Status==='Paid');
+  const occColor  = prop.Occupancy==='Vacant'?'badge-gold':prop.Occupancy==='NotApplicable'||prop.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
+  const occIcon   = prop.Occupancy==='Vacant'?'🔓':prop.Occupancy==='OwnUsage'?'🏡':prop.Occupancy==='NotApplicable'?'📋':'🏠';
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',background:open?'var(--surface-2)':'var(--surface)'}}
+        onClick={()=>setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{occIcon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{prop.Name}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>{prop.Address||prop.Type}</div>
+          </div>
+        </div>
+        <div className="prop-card-right" style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:15,color:'var(--green)'}}>{fmtINR(prop['Rent Amount'])}<span style={{fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
+          </div>
+          <span className={`badge ${occColor} prop-occ-badge-header`}>{prop.Occupancy||'Occupied'}</span>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'0 18px 18px'}}>
+        {/* Stats strip */}
+        <div style={{display:'flex',gap:24,padding:'14px 0 12px',borderBottom:'1px solid var(--border)',flexWrap:'wrap',alignItems:'center'}}>
+          <div><div className="stat-label">Total Collected</div><div className="mono" style={{color:'var(--green)',fontSize:16,marginTop:2}}>{fmtINR(totalPaid)}</div></div>
+          <div><div className="stat-label">Rent Records</div><div style={{fontSize:16,marginTop:2}}>{propRent.length}</div></div>
+          <div><div className="stat-label">Last Payment</div><div style={{fontSize:13,marginTop:2}}>{lastPaid?`${lastPaid.Month} ${lastPaid.Year}`:'—'}</div></div>
+          <div><div className="stat-label">Last Revision</div><div style={{fontSize:13,color:'var(--gold)',marginTop:2}}>{tenant?.['Last Rent Revision']||'—'}</div></div>
+          <div style={{marginLeft:'auto'}}>
+            <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation();onRecordRent();}}>+ Record Rent</button>
+          </div>
+        </div>
+
+        {/* Tenant collapsible */}
+        <CollapsibleSection title={`👤 Tenant Details (${allTenants.filter(t=>t.Status==='Active').length} active)`} defaultOpen={true}>
+          {allTenants.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No tenants recorded.</div>
+            : allTenants.map(t=>(
+              <div key={t.ID} style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>NAME</span><div style={{fontWeight:500,marginTop:2}}>{t.Name}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>PHONE</span><div className="mono" style={{marginTop:2}}>{t.Phone}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>ADVANCE</span><div className="mono" style={{marginTop:2}}>{fmtINR(t.Advance)}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>MOVE-IN</span><div style={{marginTop:2}}>{t['Move In Date']||'—'}</div></div>
+                <div><span style={{color:'var(--text-muted)',fontSize:11}}>LAST REVISION</span><div style={{color:'var(--gold)',marginTop:2}}>{t['Last Rent Revision']||'—'}</div></div>
+                <div style={{marginLeft:'auto'}}><span className={`badge ${t.Status==='Active'?'badge-green':'badge-gold'}`}>{t.Status}</span></div>
+              </div>
+            ))
+          }
+        </CollapsibleSection>
+
+        {/* Utility collapsible */}
+        <CollapsibleSection title="⚡ Utility Numbers" defaultOpen={true}>
+          <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>ELECTRICITY</span><div className="mono" style={{marginTop:2}}>{utility['Electricity Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX NO.</span><div className="mono" style={{marginTop:2}}>{utility['Property Tax Number']||'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>PROPERTY TAX VALUE</span><div className="mono" style={{color:'var(--gold)',marginTop:2}}>{utility['Property Tax Value']?fmtINR(utility['Property Tax Value']):'—'}</div></div>
+            <div><span style={{color:'var(--text-muted)',fontSize:11}}>WATER BILL NO.</span><div className="mono" style={{marginTop:2}}>{utility['Water Bill Number']||'—'}</div></div>
+            {utility['Notes']&&<div><span style={{color:'var(--text-muted)',fontSize:11}}>NOTES</span><div style={{fontSize:12,marginTop:2}}>{utility['Notes']}</div></div>}
+          </div>
+        </CollapsibleSection>
+
+        {/* Rent history collapsible */}
+        <CollapsibleSection title={`💰 Rent History (${propRent.length} records)`} defaultOpen={true}>
+          {propRent.length===0
+            ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No rent records yet.</div>
+            : <div className="table-wrap"><table>
+                <thead><tr><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+                <tbody>{propRent.map(r=>(
+                  <tr key={r.ID}>
+                    <td className="name">{r.Month}</td>
+                    <td className="mono">{r.Year}</td>
+                    <td className="mono">{fmtINR(r.Amount)}</td>
+                    <td style={{color:'var(--text-muted)'}}>{r['Paid Date']}</td>
+                    <td><span className="badge badge-blue" style={{fontSize:11}}>{r['Payment Method']||r.paymentMethod||'—'}</span></td>
+                    <td><span className={`badge ${r.Status==='Paid'?'badge-green':r.Status==='Partial'?'badge-gold':'badge-red'}`}>{r.Status}</span></td>
+                    <td style={{color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.Notes}</td>
+                    <td style={{display:'flex',gap:4}}>
+                      <EditBtn onClick={()=>onEditRent(r)}/>
+                      <button className="btn btn-secondary btn-sm" title="Receipt" onClick={()=>onReceipt(r)}>🧾</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+          }
+        </CollapsibleSection>
+      </div>}
+    </div>
+  );
+}
+
+// ── MAINTENANCE ───────────────────────────────────────────────────────────────
+function Maintenance({ data, derived, onRefresh }) {
+  const [mode, setMode]     = useState(null);
+  const [saving, setSaving] = useState(false);
+  const cashReserves = (derived?.reserves || []).filter(r => r.kind === 'Cash').map(r => r.name);
+  const blank = { 'Property ID':'', Date: new Date().toISOString().split('T')[0], Description:'', Amount:'', Vendor:'', Category:'Repair', paidReserve:'Cash' };
+  const [form, setForm]     = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const openAdd  = () => { setForm(blank); setMode('add'); };
+  const openEdit = (m) => { setForm({...blank,...m, paidReserve: m['Paid Reserve']||''}); setMode({editing:m._row, id:m.ID}); };
+
+  const handleSave = async (withReceipt = false) => {
+    if (!form['Property ID']||!form.Description||!form.Amount) { alert('Property, description and amount required.'); return; }
+    setSaving(true);
+    try {
+      if (mode==='add') {
+        const mId = `M${Date.now()}`;
+        await appendRow('Maintenance', [mId, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category, form.paidReserve||'']);
+        // Debit the paying reserve
+        if (form.paidReserve && num(form.Amount) > 0) {
+          const prop = data.properties.find(p=>p.ID===form['Property ID']);
+          await addEntry('MNT-'+mId, form.Date, { reserve: form.paidReserve, direction:'Out', qty:num(form.Amount), value:num(form.Amount),
+            counterparty: form.Vendor||'', category:'Maintenance', ref:mId, notes:`${form.Category}: ${form.Description}${prop?' @ '+prop.Name:''}` });
+        }
+      } else {
+        await updateRow('Maintenance', mode.editing, [mode.id, form['Property ID'], form.Date, form.Description, form.Amount, form.Vendor, form.Category, form.paidReserve||'']);
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const total = data.maintenance.reduce((s,m)=>s+Number(m.Amount||0),0);
+
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Maintenance</h3>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Record</button>
+      </div>
+
+      {mode!==null && (
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-title">{mode==='add'?'Maintenance Record':'Edit Record'}</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property *</label>
+              <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
+                <option value="">Select property</option>
+                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Date</label><input type="date" value={form.Date} onChange={e=>f('Date',e.target.value)}/></div>
+            <div className="form-group"><label>Category</label>
+              <select value={form.Category} onChange={e=>f('Category',e.target.value)}>
+                <option>Repair</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Cleaning</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Amount (₹) *</label><input type="number" value={form.Amount} onChange={e=>f('Amount',e.target.value)}/></div>
+            <div className="form-group"><label>Paid From <span style={{color:'var(--text-muted)'}}>reserve</span></label>
+              <select value={form.paidReserve} onChange={e=>f('paidReserve',e.target.value)}>
+                <option value="">— don't track money —</option>
+                {cashReserves.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description *</label><input value={form.Description} onChange={e=>f('Description',e.target.value)}/></div>
+            <div className="form-group"><label>Vendor / Person</label><input value={form.Vendor} onChange={e=>f('Vendor',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving...</>:mode==='add'?'Save':'Update'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{marginBottom:16}}><div className="stat-card" style={{display:'inline-block',padding:'12px 20px'}}><div className="stat-label">Total Spent</div><div className="stat-value gold" style={{fontSize:20}}>{fmtINR(total)}</div></div></div>
+
+      <div className="card">
+        {data.maintenance.length===0 ? <div className="empty"><p>No maintenance records.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Property</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Vendor</th><th></th></tr></thead>
+          <tbody>{[...data.maintenance].reverse().map(m => {
+            const prop=data.properties.find(p=>p.ID===m['Property ID']);
+            return (<tr key={m.ID}>
+              <td className="name">{prop?prop.Name:m['Property ID']}</td>
+              <td style={{color:'var(--text-muted)'}}>{m.Date}</td>
+              <td><span className="badge badge-blue">{m.Category}</span></td>
+              <td>{m.Description}</td>
+              <td className="mono">{fmtINR(m.Amount)}</td>
+              <td style={{color:'var(--text-muted)'}}>{m.Vendor}</td>
+              <td><EditBtn onClick={()=>openEdit(m)}/></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── UTILITIES (now property-level, fully integrated into Properties) ──────────
+// Utilities is now embedded in the Properties page. This page shows a summary view.
+function Utilities({ data, onRefresh }) {
+  return (
+    <div>
+      <div className="section-row">
+        <h3>Utility Numbers</h3>
+        <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit via Properties → ✏️</span>
+      </div>
+      <div className="gap-12">
+        {data.properties.length===0 && <div className="card"><div className="empty"><p>Add properties first.</p></div></div>}
+        {data.properties.map(p => {
+          const u = data.utilities.find(u=>u['Property ID']===p.ID)||{};
+          return (
+            <div className="card" key={p.ID}>
+              <div style={{fontWeight:500,marginBottom:10}}>{p.Name} <span className={`badge ${p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green'}`} style={{marginLeft:8}}>{p.Occupancy||'Occupied'}</span></div>
+              <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Electricity</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Electricity Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax No.</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Property Tax Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Property Tax Value</div><div className="mono" style={{fontSize:13,color:'var(--gold)',marginTop:2}}>{u['Property Tax Value'] ? fmtINR(u['Property Tax Value']) : <span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+                <div><div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Water Bill</div><div className="mono" style={{fontSize:13,color:'var(--text-primary)',marginTop:2}}>{u['Water Bill Number']||<span style={{color:'var(--text-muted)'}}>—</span>}</div></div>
+              </div>
+              {u['Notes'] && <div style={{marginTop:10,fontSize:12,color:'var(--text-muted)',padding:'6px 10px',background:'rgba(255,255,255,.03)',borderRadius:5}}>📝 {u['Notes']}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── NLP QUERY ────────────────────────────────────────────────────────────────
+
 // ── GOOGLE SIGN-IN GATE (whitelisted accounts only, on top of the PIN) ────────
 function GoogleGate({ onDone }) {
   const cfg = getConfig();
@@ -1926,6 +3205,7 @@ function App() {
   const [gated, setGated] = useState(false);
   const [page, setPage] = useState('dashboard');
   const [editTxn, setEditTxn] = useState(null);
+  const [rentTarget, setRentTarget] = useState(null);
   const [data, setData] = useState({ stock: [], reserves: [], banks: [], entries: [], lending: [], payments: [], reminders: [], investments: [], properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -1965,12 +3245,17 @@ function App() {
 
   const nav = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
-    { id: 'reserves', label: 'Reserves', icon: 'layers', section: 'Manage' },
-    { id: 'convert', label: 'New Transaction', icon: 'exchange', section: 'Manage' },
-    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Manage' },
-    { id: 'lending', label: 'Lending', icon: 'hand', section: 'Manage' },
-    { id: 'expenses', label: 'Expenses', icon: 'currency', section: 'Manage' },
-    { id: 'stock', label: 'Stock', icon: 'box', section: 'Manage' },
+    { id: 'reserves', label: 'Reserves', icon: 'layers', section: 'Jewel' },
+    { id: 'convert', label: 'New Transaction', icon: 'exchange', section: 'Jewel' },
+    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Jewel' },
+    { id: 'lending', label: 'Lending', icon: 'hand', section: 'Jewel' },
+    { id: 'expenses', label: 'Expenses', icon: 'currency', section: 'Jewel' },
+    { id: 'stock', label: 'Stock', icon: 'box', section: 'Jewel' },
+    { id: 'properties', label: 'Properties', icon: 'home', section: 'Rent' },
+    { id: 'tenants', label: 'Tenants', icon: 'users', section: 'Rent' },
+    { id: 'rent', label: 'Rent', icon: 'currency', section: 'Rent' },
+    { id: 'maintenance', label: 'Maintenance', icon: 'tool', section: 'Rent' },
+    { id: 'utilities', label: 'Utilities', icon: 'zap', section: 'Rent' },
     { id: 'reminders', label: 'Reminders', icon: 'bell', section: 'Tools' },
     { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
     { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
@@ -1978,16 +3263,21 @@ function App() {
 
   const sections = [...new Set(nav.map(n => n.section))];
   const titles = {
-    dashboard: ['Dashboard', 'Reserves, lending and reminders at a glance'],
+    dashboard: ['Dashboard', 'Reserves, rent and reminders at a glance'],
     reserves: ['Reserves', 'Balances, opening & per-reserve ledger'],
     convert: ['New Transaction', 'Convert between reserves — sell, buy, exchange'],
     transactions: ['Transactions', 'View and edit past transactions'],
     lending: ['Lending', 'Cash or metal given to help — track returns & interest'],
     expenses: ['Expenses', 'Money spent out of the Cash reserve'],
     stock: ['Stock', 'Boxes & pockets — physical opening inventory'],
+    properties: ['Properties', 'Your rental properties'],
+    tenants: ['Tenants', 'Tenant details'],
+    rent: ['Rent', 'Monthly rent — collect into a Cash/Bank reserve'],
+    maintenance: ['Maintenance', 'Property expenses paid from a reserve'],
+    utilities: ['Utilities', 'Electricity, tax & water numbers'],
     reminders: ['Reminders', 'Follow-ups to close'],
     nlp: ['Ask AI', 'Natural language questions about your data'],
-    setup: ['Setup', 'Google Sheets, sharing and API keys'],
+    setup: ['Setup', 'Gateway, sign-in and API keys'],
   };
   const [title, subtitle] = titles[page] || ['', ''];
 
@@ -2010,6 +3300,11 @@ function App() {
       case 'lending': return <Lending data={data} derived={derived} onRefresh={loadData}/>;
       case 'expenses': return <Expenses data={data} derived={derived} onRefresh={loadData}/>;
       case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
+      case 'properties': return <Properties data={data} onRefresh={loadData} onGoToRent={(propId)=>{ setRentTarget(propId); setPage('rent'); }}/>;
+      case 'tenants': return <Tenants data={data} onRefresh={loadData}/>;
+      case 'rent': return <Rent data={data} derived={derived} onRefresh={loadData} initialPropId={rentTarget} onClearTarget={()=>setRentTarget(null)}/>;
+      case 'maintenance': return <Maintenance data={data} derived={derived} onRefresh={loadData}/>;
+      case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
       case 'reminders': return <Reminders data={data} derived={derived} onRefresh={loadData}/>;
       case 'nlp': return <NLPQuery data={data} derived={derived}/>;
       case 'setup': return <Setup/>;
