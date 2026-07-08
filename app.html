@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Money Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #14110a;
+      --navy-mid: #1c1810;
+      --navy-light: #2a2417;
+      --navy-border: #3d3420;
+      --accent: #d4a017;
+      --accent-hover: #b8890f;
+      --accent-light: rgba(212,160,23,0.12);
+      --gold: #f59e0b;
+      --silver: #9ca3af;
+      --green: #10b981;
+      --green-light: rgba(16,185,129,0.12);
+      --red: #ef4444;
+      --red-light: rgba(239,68,68,0.10);
+      --text-primary: #f5f1e8;
+      --text-secondary: #b3a98f;
+      --text-muted: #7d7460;
+      --surface: #1c1810;
+      --surface-2: #2a2417;
+      --border: #3d3420;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --mono: 'JetBrains Mono', monospace;
+    }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', sans-serif; background: var(--navy); color: var(--text-primary); min-height: 100vh; display: flex; }
+    #root { display: flex; width: 100%; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; min-height: 100vh; background: var(--navy-mid); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+    .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-logo .logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; font-size: 17px; }
+    .sidebar-logo h1 { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .sidebar-logo p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .sidebar-nav { padding: 12px 8px; flex: 1; }
+    .nav-section { margin-bottom: 20px; }
+    .nav-section-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; padding: 0 8px; margin-bottom: 4px; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border: none; background: none; width: 100%; text-align: left; transition: all .15s; font-family: inherit; }
+    .nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-light); color: var(--accent); }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+    .setup-badge { font-size: 11px; background: rgba(245,158,11,.12); color: var(--gold); border: 1px solid rgba(245,158,11,.25); border-radius: 6px; padding: 6px 10px; cursor: pointer; text-align: center; }
+
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--navy-mid); }
+    .topbar h2 { font-size: 16px; font-weight: 600; }
+    .topbar p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+    .card + .card { margin-top: 16px; }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+
+    /* Stats row */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+    .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .stat-value { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--text-primary); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.gold { color: var(--gold); }
+    .stat-value.silver { color: var(--silver); }
+    .stat-value.red { color: var(--red); }
+    .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    td { padding: 12px; border-bottom: 1px solid rgba(61,52,32,.5); color: var(--text-secondary); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); color: var(--text-primary); }
+    .mono { font-family: var(--mono); font-size: 12px; }
+    td.name { color: var(--text-primary); font-weight: 500; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 20px; }
+    .badge-green { background: var(--green-light); color: var(--green); }
+    .badge-red { background: var(--red-light); color: var(--red); }
+    .badge-gold { background: rgba(245,158,11,.12); color: var(--gold); }
+    .badge-silver { background: rgba(156,163,175,.12); color: var(--silver); }
+    .badge-blue { background: var(--accent-light); color: var(--accent); }
+
+    /* Forms */
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+    .form-group input, .form-group select, .form-group textarea {
+      background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 9px 12px; font-size: 13px; color: var(--text-primary); font-family: inherit;
+      transition: border-color .15s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+    .form-group select option { background: var(--navy); }
+
+    /* Item rows (transaction builder) */
+    .item-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) 36px; gap: 8px; align-items: end; padding: 10px; background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; }
+    .item-row .form-group input, .item-row .form-group select { padding: 7px 9px; font-size: 12px; }
+    .item-row .form-group label { font-size: 10px; }
+    .row-del { background: var(--red-light); color: var(--red); border: none; border-radius: 6px; height: 33px; cursor: pointer; font-size: 14px; }
+    .settle-box { background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 12px; }
+    .settle-line { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: var(--text-secondary); }
+    .settle-line.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; font-weight: 600; color: var(--text-primary); font-size: 14px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; font-family: inherit; }
+    .btn-primary { background: var(--accent); color: #14110a; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: .6; cursor: default; }
+    .btn-secondary { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+    .btn-secondary:hover { color: var(--text-primary); border-color: var(--accent); }
+    .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+    /* NLP Panel */
+    .nlp-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; height: 480px; }
+    .nlp-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
+    .msg-avatar { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+    .msg-avatar.user { background: var(--accent-light); color: var(--accent); }
+    .msg-avatar.ai { background: rgba(16,185,129,.15); color: var(--green); }
+    .msg-bubble { background: var(--surface-2); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.6; color: var(--text-primary); max-width: 600px; }
+    .msg-bubble.user { background: var(--accent-light); border: 1px solid rgba(212,160,23,.2); }
+    .nlp-input-row { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+    .nlp-input { flex: 1; background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; color: var(--text-primary); font-family: inherit; resize: none; height: 42px; }
+    .nlp-input:focus { outline: none; border-color: var(--accent); }
+    .nlp-suggestions { padding: 0 16px 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .nlp-chip { font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; background: none; font-family: inherit; transition: all .15s; }
+    .nlp-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Setup page */
+    .setup-step { display: flex; gap: 14px; padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border); margin-bottom: 12px; align-items: flex-start; }
+    .setup-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .setup-num.done { background: var(--green-light); color: var(--green); }
+    .setup-text h3 { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+    .setup-text p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .setup-text code { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; color: var(--accent); }
+    .config-status { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot-green { background: var(--green); }
+    .dot-red { background: var(--red); }
+
+    /* Loading */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+    .empty p { font-size: 13px; margin-top: 6px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 2px; background: var(--navy); border-radius: var(--radius); padding: 4px; margin-bottom: 20px; width: fit-content; flex-wrap: wrap; }
+    .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: all .15s; border: none; background: none; font-family: inherit; }
+    .tab.active { background: var(--surface); color: var(--text-primary); }
+
+    /* Utility */
+    .section-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .section-row h3 { font-size: 15px; font-weight: 600; }
+    .gap-12 { display: flex; flex-direction: column; gap: 12px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .sidebar { width: 56px; } .sidebar .sidebar-logo h1, .sidebar .nav-item span, .nav-section-label, .sidebar-logo p, .sidebar-footer { display: none; } .nav-item { justify-content: center; padding: 10px; } }
+
+    /* PIN screen */
+    .pin-screen { position: fixed; inset: 0; background: var(--navy); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .pin-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px 32px; width: 100%; max-width: 380px; text-align: center; }
+    .pin-logo { width: 48px; height: 48px; background: var(--accent); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 24px; }
+    .pin-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .pin-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5; }
+    .pin-dots { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; }
+    .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); transition: all .15s; }
+    .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+    .pin-dot.error { background: var(--red); border-color: var(--red); }
+    .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .pin-key { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 18px; font-weight: 500; cursor: pointer; color: var(--text-primary); transition: all .15s; font-family: var(--mono); }
+    .pin-key:hover { background: var(--navy-light); border-color: var(--accent); }
+    .pin-key:active { transform: scale(.95); }
+    .pin-key.del { font-size: 14px; color: var(--text-muted); }
+    .pin-error { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 18px; }
+    .pin-setup-form { text-align: left; }
+    .pin-setup-form .form-group { margin-bottom: 12px; }
+    .pin-toggle { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 12px; display: inline-block; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── CONFIG — PIN-encrypted localStorage ──────────────────────────────────────
+// Keys are AES-GCM encrypted with your PIN before being stored.
+// Nothing sensitive is ever in the source code.
+const STORE_KEY = 'cm_enc_config'; // combined Rent+Jewel app
+
+async function deriveKey(pin) {
+  const enc = new TextEncoder();
+  const raw = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('cm-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptConfig(pin, data) {
+  const key = await deriveKey(pin);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
+  const buf = new Uint8Array(iv.byteLength + cipher.byteLength);
+  buf.set(iv, 0); buf.set(new Uint8Array(cipher), iv.byteLength);
+  return btoa(String.fromCharCode(...buf));
+}
+
+async function decryptConfig(pin, b64) {
+  try {
+    const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = buf.slice(0, 12), data = buf.slice(12);
+    const key = await deriveKey(pin);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return JSON.parse(new TextDecoder().decode(plain));
+  } catch { return null; }
+}
+
+function hasEncryptedConfig() { return !!localStorage.getItem(STORE_KEY); }
+
+async function loadConfig(pin) {
+  const b64 = localStorage.getItem(STORE_KEY);
+  if (!b64) return null;
+  return decryptConfig(pin, b64);
+}
+
+async function persistConfig(pin, cfg) {
+  const toStore = { rentSheetId: cfg.rentSheetId, jewelSheetId: cfg.jewelSheetId, gatewayUrl: cfg.gatewayUrl, gatewaySecret: cfg.gatewaySecret, clientId: cfg.clientId, geminiKey: cfg.geminiKey };
+  const enc = await encryptConfig(pin, toStore);
+  localStorage.setItem(STORE_KEY, enc);
+}
+
+let _runtimeConfig = null;
+const getConfig = () => ({ ...(_runtimeConfig || {}) });
+const setRuntimeConfig = (cfg) => { _runtimeConfig = cfg; };
+
+// ── DATA MODEL ────────────────────────────────────────────────────────────────
+// Every sheet's expected columns. The gateway matches by NAME (order-independent)
+// and appends any missing column, so schema changes never need manual sheet edits.
+const HEADERS = {
+  // Jewel sheet tabs
+  Stock:       ['ID','Box Name','Metal','Description','Location','Pieces','Gross Weight Grams','Weight Grams','Status','Notes','Created','Reserve Type'],
+  Reserves:    ['Reserve','Kind','Unit','Opening Balance','Subtypes','Notes'],
+  Banks:       ['Name','Opening Balance','Notes'],
+  Entries:     ['ID','Txn ID','Date','Reserve','Subtype','Direction','Qty','Weight Grams','Touch','Margin','Value','Counterparty','Category','Ref','Notes'],
+  Lending:     ['ID','Date','Person','Phone','Type','Reserve','Weight Grams','Amount','Interest %','Interest Type','Due Date','Status','Notes'],
+  Payments:    ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
+  Reminders:   ['ID','Created','Due Date','Title','Linked Type','Linked ID','Status','Notes'],
+  Investments: ['ID','Name','Type','Vendor','Reserve','Principal','Rate %','Start Date','Maturity Date','Repayment Type','Monthly Repayment','Next Payment Date','Next Payment Value','Final Settlement','Status','Notes'],
+  // Rent sheet tabs
+  Properties:  ['ID','Name','Address','Type','Rent Amount','Occupancy','Notes','Created'],
+  Tenants:     ['ID','Property ID','Name','Phone','Email','Advance','Move In Date','Status','Notes','Last Rent Revision'],
+  Rent:        ['ID','Property ID','Tenant ID','Month','Year','Amount','Paid Date','Status','Notes','Payment Method','Received Reserve'],
+  Maintenance: ['ID','Property ID','Date','Description','Amount','Vendor','Category','Paid Reserve'],
+  Utilities:   ['Property ID','Electricity Number','Property Tax Number','Property Tax Value','Water Bill Number','Notes'],
+};
+// Which physical spreadsheet each tab lives in.
+const SHEET_DB = {
+  Stock:'jewel', Reserves:'jewel', Banks:'jewel', Entries:'jewel', Lending:'jewel',
+  Payments:'jewel', Reminders:'jewel', Investments:'jewel',
+  Properties:'rent', Tenants:'rent', Rent:'rent', Maintenance:'rent', Utilities:'rent',
+};
+const spreadsheetIdFor = (sheetName) => {
+  const cfg = getConfig();
+  return SHEET_DB[sheetName] === 'rent' ? cfg.rentSheetId : cfg.jewelSheetId;
+};
+
+// The built-in reserves. Bank reserves (kind Cash) are added dynamically from the Banks sheet.
+const RESERVES = [
+  { name: 'Cash',          kind: 'Cash',   unit: '₹',    emoji: '💵' },
+  { name: 'Ornaments',     kind: 'Gold',   unit: 'g',    emoji: '💍' },
+  { name: 'Gold Metal',    kind: 'Gold',   unit: 'g',    emoji: '🥇' },
+  { name: 'Old Gold',      kind: 'Gold',   unit: 'g',    emoji: '🟡' },
+  { name: 'Own Use Gold',  kind: 'Gold',   unit: 'g',    emoji: '🏵️', subtypes: "Sankari's Gold, Amma's Gold, Revathi's Gold" },
+  { name: 'Silver',        kind: 'Silver', unit: 'g',    emoji: '🥈' },
+  { name: 'Old Silver',    kind: 'Silver', unit: 'g',    emoji: '⚪' },
+];
+const RESERVE_NAMES = RESERVES.map(r => r.name);
+// Metal reserves are the only gram-denominated ones; everything else (Cash + banks) is ₹.
+const METAL_RESERVES = ['Ornaments','Gold Metal','Old Gold','Own Use Gold','Silver','Old Silver'];
+const isCash = (name) => !METAL_RESERVES.includes(name);
+const reserveKind = (name) => name==='Silver'||name==='Old Silver' ? 'Silver' : METAL_RESERVES.includes(name) ? 'Gold' : 'Cash';
+const fmtReserve = (name, qty) => isCash(name) ? fmtINR(qty) : fmtG(qty);
+
+// ── APPS SCRIPT GATEWAY ───────────────────────────────────────────────────────
+// Data calls go through the user's Apps Script Web App. Access needs a signed
+// session that the gateway issues only to whitelisted Google accounts (below),
+// on top of the PIN that decrypts the config. Raised when re-auth is needed:
+const SESSION_KEY = 'cm_session';
+class NeedLogin extends Error { constructor(m){ super(m||'Sign in again'); this.needLogin = true; } }
+
+const getSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; } };
+const setSession = (s) => { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); };
+const sessionValid = () => { const s = getSession(); return !!(s && s.token && s.expiresAt && Date.now() < s.expiresAt - 60000); };
+
+async function gatewayPost(payload) {
+  const cfg = getConfig();
+  if (!cfg.gatewayUrl || !cfg.gatewaySecret) throw new Error('Gateway not configured — open Setup.');
+  const res = await fetch(cfg.gatewayUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request → no CORS preflight
+    body: JSON.stringify({ secret: cfg.gatewaySecret, ...payload }),
+  });
+  if (!res.ok) throw new Error('Gateway HTTP ' + res.status);
+  return res.json().catch(() => ({ ok: false, error: 'Bad gateway response' }));
+}
+
+// Exchange a Google ID token for a signed session (whitelist enforced server-side).
+async function gatewayLogin(idToken) {
+  const data = await gatewayPost({ action: 'login', idToken });
+  if (!data.ok) throw new Error(data.error || 'Login failed');
+  setSession({ token: data.session, email: data.email, expiresAt: data.expiresAt });
+  return data;
+}
+
+async function gatewayRequest(action, payload) {
+  const s = getSession();
+  const data = await gatewayPost({ action, session: s && s.token, ...payload });
+  if (!data.ok) {
+    if (data.needLogin) { setSession(null); throw new NeedLogin(data.error); }
+    throw new Error(data.error || 'Gateway error');
+  }
+  return data;
+}
+
+async function readSheet(sheetName) {
+  const data = await gatewayRequest('read', { spreadsheetId: spreadsheetIdFor(sheetName), sheet: sheetName });
+  const rows = data.values || [];
+  if (rows.length <= 1) return [];
+  const canonicalHeaders = HEADERS[sheetName] || [];
+  const actualHeaders = rows[0];
+  const headerMap = actualHeaders.map(h => {
+    if (typeof h !== 'string') return null;
+    const cleanActual = h.trim().toLowerCase();
+    return canonicalHeaders.find(ch => ch.toLowerCase() === cleanActual) || h;
+  });
+  return rows.slice(1)
+    .map((row, i) => {
+      const obj = { _row: i + 2 };
+      headerMap.forEach((h, j) => { if (h) obj[h] = (row[j] !== undefined ? row[j] : ''); });
+      return obj;
+    })
+    .filter(obj => canonicalHeaders.some(ch => obj[ch] !== ''));
+}
+
+// Callers still pass a values ARRAY in HEADERS order; we zip it to a {name:value}
+// object so the gateway can place values by column name (position-independent).
+function zipRow(sheetName, values) {
+  const h = HEADERS[sheetName] || [];
+  const obj = {};
+  h.forEach((name, i) => { obj[name] = values[i] !== undefined ? values[i] : ''; });
+  return obj;
+}
+
+async function appendRow(sheetName, values) {
+  await gatewayRequest('append', { spreadsheetId: spreadsheetIdFor(sheetName), sheet: sheetName, values: zipRow(sheetName, values) });
+}
+
+async function updateRow(sheetName, rowNum, values) {
+  await gatewayRequest('update', { spreadsheetId: spreadsheetIdFor(sheetName), sheet: sheetName, row: rowNum, values: zipRow(sheetName, values) });
+}
+
+// Build the values array for a row object in header order.
+function rowValues(sheetName, obj) {
+  return HEADERS[sheetName].map(h => obj[h] !== undefined ? obj[h] : '');
+}
+
+// Delete every ledger row belonging to a transaction (all legs share a Txn ID).
+async function deleteTxn(txnId) {
+  await gatewayRequest('delete', { spreadsheetId: spreadsheetIdFor('Entries'), sheet: 'Entries', field: 'Txn ID', value: txnId });
+}
+
+// Ensure every tab/column exists on both sheets, then seed missing reserve rows.
+async function initSheets() {
+  const cfg = getConfig();
+  const byDb = { rent: {}, jewel: {} };
+  for (const [sheet, h] of Object.entries(HEADERS)) byDb[SHEET_DB[sheet]][sheet] = h;
+  try { if (cfg.jewelSheetId) await gatewayRequest('ensureSchema', { spreadsheetId: cfg.jewelSheetId, schema: byDb.jewel }); } catch(e) { console.warn('ensureSchema jewel:', e.message); }
+  try { if (cfg.rentSheetId)  await gatewayRequest('ensureSchema', { spreadsheetId: cfg.rentSheetId,  schema: byDb.rent  }); } catch(e) { console.warn('ensureSchema rent:', e.message); }
+  // Seed a Reserves row for every built-in reserve that is missing.
+  try {
+    const existing = (await readSheet('Reserves')).map(r => (r.Reserve||'').trim());
+    for (const rs of RESERVES) {
+      if (!existing.includes(rs.name)) await appendRow('Reserves', rowValues('Reserves', { Reserve:rs.name, Kind:rs.kind, Unit:rs.unit, 'Opening Balance':0, Subtypes:rs.subtypes||'', Notes:'' }));
+    }
+  } catch(e) { console.warn('seed Reserves:', e.message); }
+}
+
+// ── SHARED HELPERS ────────────────────────────────────────────────────────────
+const fmtINR = (v) => '₹' + Number(v||0).toLocaleString('en-IN');
+const fmtG   = (v) => Number(v||0).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' g';
+const todayStr = () => new Date().toISOString().slice(0,10);
+const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
+
+// Gold/silver weight conversion: direct gram override wins, else weight × (touch+margin)/100
+function qtyFromGold(weight, touch, margin, direct) {
+  if (direct !== '' && direct !== undefined && direct !== null) return Math.round(num(direct)*1000)/1000;
+  return Math.round(num(weight) * (num(touch) + num(margin)) / 100 * 1000) / 1000;
+}
+
+// Append one reserve-ledger entry — every reserve movement goes through here.
+// leg = { reserve, subtype, direction:'In'|'Out', qty, weight, touch, margin, value, counterparty, category, ref, notes }
+async function addEntry(txnId, date, leg) {
+  if (num(leg.qty) <= 0 && num(leg.value) <= 0) return;
+  await appendRow('Entries', [
+    uid('E'), txnId, date, leg.reserve, leg.subtype||'', leg.direction, num(leg.qty),
+    leg.weight!==undefined?leg.weight:'', leg.touch!==undefined?leg.touch:'', leg.margin!==undefined?leg.margin:'',
+    leg.value!==undefined?num(leg.value):'', leg.counterparty||'', leg.category||'', leg.ref||'', leg.notes||'',
+  ]);
+}
+
+// ── DERIVED TOTALS — computed fresh from sheets every load ───────────────────
+function computeReserves(data) {
+  // Bank reserves (dynamic, kind Cash) from the Banks sheet
+  const bankDefs = (data.banks || []).filter(b => (b.Name||'').trim());
+  const bankReserves = bankDefs.map(b => ({ name: b.Name.trim(), kind:'Cash', unit:'₹', emoji:'🏦', isBank:true,
+    bankRow: b._row, bankOpening: num(b['Opening Balance']), bankNotes: b.Notes||'' }));
+  const baseReserves = [...RESERVES, ...bankReserves];
+  const allNames = baseReserves.map(r => r.name);
+
+  // Opening balance per reserve: metals from tagged Stock rows + manual top-up; Cash from Reserves sheet; banks from Banks sheet.
+  const stockOpening = {};
+  allNames.forEach(n => stockOpening[n] = 0);
+  data.stock.forEach(b => {
+    const rt = (b['Reserve Type']||'').trim();
+    if (allNames.includes(rt)) stockOpening[rt] += num(b['Weight Grams']);
+  });
+
+  const manualOpening = {};
+  allNames.forEach(n => manualOpening[n] = 0);
+  data.reserves.forEach(r => { if (RESERVE_NAMES.includes(r.Reserve)) manualOpening[r.Reserve] = num(r['Opening Balance']); });
+  bankReserves.forEach(b => { manualOpening[b.name] = b.bankOpening; });
+
+  // Subtypes config per reserve (built-in reserves only)
+  const subtypes = {};
+  data.reserves.forEach(r => { if (RESERVE_NAMES.includes(r.Reserve)) subtypes[r.Reserve] = (r.Subtypes||'').split(',').map(s=>s.trim()).filter(Boolean); });
+
+  // Movement totals from Entries
+  const moved = {};
+  allNames.forEach(n => moved[n] = 0);
+  data.entries.forEach(e => {
+    if (!allNames.includes(e.Reserve)) return;
+    moved[e.Reserve] += (e.Direction === 'In' ? 1 : -1) * num(e.Qty);
+  });
+
+  const reserves = baseReserves.map(rs => {
+    const opening = (rs.kind === 'Cash' ? 0 : stockOpening[rs.name]) + manualOpening[rs.name];
+    const balance = Math.round((opening + moved[rs.name]) * 1000) / 1000;
+    return { ...rs, opening, stockOpening: stockOpening[rs.name], manualOpening: manualOpening[rs.name],
+             moved: moved[rs.name], balance, subtypes: subtypes[rs.name] || [], _row: (data.reserves.find(r=>r.Reserve===rs.name)||{})._row };
+  });
+  const balOf = (name) => (reserves.find(r => r.name === name) || {}).balance || 0;
+
+  const goldTotal   = balOf('Ornaments') + balOf('Gold Metal') + balOf('Old Gold');
+  const silverTotal = balOf('Silver') + balOf('Old Silver');
+  const cashBal     = balOf('Cash');
+  const banks       = reserves.filter(r => r.isBank);
+  const bankTotal   = banks.reduce((s,b) => s + b.balance, 0);
+
+  // Lending outstanding — simple interest per month on principal until Closed
+  const paidFor = (refType, refId) => data.payments
+    .filter(p => p['Ref Type'] === refType && p['Ref ID'] === refId)
+    .reduce((s,p) => s + num(p.Amount), 0);
+  const interestFor = (l) => {
+    const rate = num(l['Interest %']);
+    if (!rate || (l['Interest Type']==='None') || !l.Date) return 0;
+    const days = Math.max(0, (Date.now() - new Date(l.Date).getTime()) / 86400000);
+    return Math.round(num(l.Amount) * (rate/100) * (days/30));
+  };
+  const lendOutstanding = data.lending.map(l => {
+    const closed = l.Status === 'Closed';
+    const interest = closed ? 0 : interestFor(l);
+    const paid = paidFor('Lending', l.ID);
+    return { ...l, interest, paid, outstanding: closed ? 0 : num(l.Amount) + interest - paid };
+  });
+  const lendingDue = lendOutstanding.filter(l => l.outstanding > 0.5).reduce((s,l) => s + l.outstanding, 0);
+
+  // Reminders
+  const openReminders = data.reminders.filter(r => (r.Status||'Open') !== 'Closed')
+    .sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
+
+  return { reserves, balOf, goldTotal, silverTotal, cashBal, banks, bankTotal, lendOutstanding, lendingDue, openReminders, paidFor };
+}
+
+// ── SMART DATA FILTER — send only what the query needs ───────────────────────
+function filterDataForQuery(question, data, derived) {
+  const q = question.toLowerCase();
+
+  const summary = {
+    reserves: derived.reserves.map(r => ({ reserve: r.name, unit: r.unit, balance: r.balance, opening: r.opening })),
+    goldTotalGrams: derived.goldTotal,
+    silverTotalGrams: derived.silverTotal,
+    cashBalance: derived.cashBal,
+    lendingOutstanding: derived.lendingDue,
+    openReminders: derived.openReminders.length,
+  };
+
+  const slim = (arr, fields) => arr.map(row => {
+    const obj = {};
+    fields.forEach(f => { if (row[f] !== undefined && row[f] !== '') obj[f] = row[f]; });
+    return obj;
+  });
+
+  const needsStock     = q.match(/stock|box|pocket|container|location|place|locker|inside|ornament|piece/);
+  const needsEntries   = q.match(/sale|sold|sell|buy|bought|convert|conversion|transaction|move|moved|entry|entries|touch|expense|spent|history|reserve|gold|silver|cash|metal/);
+  const needsLending   = q.match(/lend|loan|borrow|gave|given|owe|return|help|installment|interest/);
+  const needsReminders = q.match(/remind|reminder|due|pending|follow|close/);
+
+  const result = { summary };
+  if (needsStock) {
+    result.stockBoxes = slim(data.stock, ['Box Name','Metal','Description','Location','Pieces','Weight Grams','Reserve Type']);
+  }
+  if (needsEntries || (!needsStock && !needsLending && !needsReminders)) {
+    result.recentEntries = slim(data.entries.slice(-150), ['Date','Reserve','Subtype','Direction','Qty','Weight Grams','Touch','Margin','Value','Counterparty','Category','Notes']);
+  }
+  if (needsLending) {
+    result.lending = derived.lendOutstanding.map(l => ({
+      Date:l.Date, Person:l.Person, Phone:l.Phone, Type:l.Type, FromReserve:l.Reserve, WeightGrams:l['Weight Grams'],
+      Principal:l.Amount, InterestPctPerMonth:l['Interest %'], InterestAccrued:l.interest,
+      DueDate:l['Due Date'], Outstanding:l.outstanding, Status:l.Status,
+    }));
+    result.repayments = slim(data.payments.filter(p=>p['Ref Type']==='Lending'), ['Date','Ref ID','Person','Mode','Amount','Weight Grams']);
+  }
+  if (needsReminders) {
+    result.openReminders = slim(derived.openReminders, ['Due Date','Title','Linked Type','Notes']);
+  }
+  return result;
+}
+
+// ── AI — auto-detects Claude (sk-ant-) or Gemini (AIza) key ──────────────────
+async function askAI(question, data, derived) {
+  const cfg = getConfig();
+  const key = cfg.geminiKey || '';
+  if (!key) return 'AI API key not set. Add it in Setup.';
+
+  const filtered = filterDataForQuery(question, data, derived);
+  const now = new Date();
+
+  const context = `You are an assistant for a small family jewellery business in India. Answer concisely using only the data provided.
+Money is in ₹ (INR); metal balances are in grams. The business tracks six "reserves" (accounts), each with an opening balance and a running balance:
+Cash (₹), Ornaments, Gold Metal, Old Gold (all gold, grams), Silver, Old Silver (silver, grams).
+goldTotalGrams = Ornaments + Gold Metal + Old Gold. silverTotalGrams = Silver + Old Silver.
+Every transaction is a conversion that moves quantity between reserves, recorded as Entries (Direction In/Out, Qty in the reserve's unit). Gold legs may use a touch formula: Qty grams = weight × (touch + margin) / 100.
+Lending = cash or metal given to help someone, repaid in installments; simple interest (% per month) may apply. Outstanding = Principal + InterestAccrued − repaid.
+Reminders track follow-ups with a due date that must be closed.
+Today: ${now.toLocaleDateString('en-IN')}.
+
+DATA:
+${JSON.stringify(filtered)}`;
+
+  const isClaude = key.startsWith('sk-ant-');
+  if (isClaude) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, system: context, messages: [{ role: 'user', content: question }] }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Claude API error'); }
+    const d = await res.json();
+    return d.content[0].text;
+  } else {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: context }] },
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        generationConfig: { maxOutputTokens: 1000 }
+      }),
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Gemini API error'); }
+    const d = await res.json();
+    return d.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
+  }
+}
+
+// ── ICONS ─────────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 16 }) => {
+  const icons = {
+    dashboard: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+    box: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+    exchange: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>,
+    list: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+    hand: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+    currency: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
+    chat: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+    settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
+    plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    send: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+    check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polyline points="20 6 9 17 4 12"/></svg>,
+    layers: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+    bell: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
+    minus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={size} height={size}><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+function CollapsibleSection({ title, defaultOpen=false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{marginTop:12}}>
+      <div style={{fontSize:12,fontWeight:600,color:'var(--text-secondary)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{display:'inline-block',transition:'transform .2s',transform:open?'rotate(90deg)':'none'}}>›</span>{title}
+      </div>
+      {open && <div style={{marginTop:8}}>{children}</div>}
+    </div>
+  );
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────────────
+function Dashboard({ data, derived, onNav, onRefresh }) {
+  const d = derived;
+  const [closing, setClosing] = useState('');
+  const openLends = d.lendOutstanding.filter(l => l.outstanding > 0.5).sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
+  const recentEntries = [...data.entries].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||'')).slice(0,10);
+
+  const closeReminder = async (r) => {
+    setClosing(r.ID);
+    try { await updateRow('Reminders', r._row, rowValues('Reminders', { ...r, Status:'Closed' })); onRefresh(); }
+    catch(e) { alert('Error: '+e.message); }
+    setClosing('');
+  };
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">💵 Cash</div><div className={`stat-value ${d.cashBal>=0?'green':'red'}`}>{fmtINR(d.cashBal)}</div><div className="stat-sub">In hand + account</div></div>
+        <div className="stat-card"><div className="stat-label">🥇 Gold Reserve</div><div className="stat-value gold">{fmtG(d.goldTotal)}</div><div className="stat-sub">Ornaments + Metal + Old Gold</div></div>
+        <div className="stat-card"><div className="stat-label">🥈 Silver Reserve</div><div className="stat-value silver">{fmtG(d.silverTotal)}</div><div className="stat-sub">Silver + Old Silver</div></div>
+        <div className="stat-card"><div className="stat-label">🤝 Lending Out</div><div className="stat-value" style={{color:d.lendingDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.lendingDue)}</div><div className="stat-sub">{openLends.length} open · incl. interest</div></div>
+        <div className="stat-card"><div className="stat-label">🔔 Open Reminders</div><div className="stat-value" style={{color:d.openReminders.length>0?'var(--gold)':'var(--green)'}}>{d.openReminders.length}</div><div className="stat-sub">To follow up & close</div></div>
+      </div>
+
+      <div className="card" style={{marginBottom:16}}>
+        <div className="section-row" style={{marginBottom:12}}>
+          <div className="card-title" style={{marginBottom:0}}>Reserve Balances</div>
+          <button className="btn btn-primary btn-sm" onClick={()=>onNav('convert')}><Icon name="exchange" size={12}/> New Transaction</button>
+        </div>
+        <div className="stats-row" style={{marginBottom:0}}>
+          {d.reserves.map(r => (
+            <div className="stat-card" key={r.name} style={{cursor:'pointer'}} onClick={()=>onNav('reserves')}>
+              <div className="stat-label">{r.emoji} {r.name}</div>
+              <div className={`stat-value ${r.kind==='Silver'?'silver':r.kind==='Cash'?'green':'gold'}`} style={{fontSize:18}}>{fmtReserve(r.name, r.balance)}</div>
+              <div className="stat-sub">opening {fmtReserve(r.name, r.opening)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="two-col">
+        <div>
+          <div className="card">
+            <div className="card-title">🔔 Open Reminders</div>
+            {d.openReminders.length === 0 ? <div className="empty"><p>No open reminders ✓</p></div> :
+            <div className="gap-12">{d.openReminders.map(r => {
+              const overdue = r['Due Date'] && r['Due Date'] < todayStr();
+              return (<div key={r.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--navy)',borderRadius:8,border:`1px solid ${overdue?'rgba(239,68,68,.3)':'var(--border)'}`}}>
+                <div>
+                  <div style={{fontWeight:500,fontSize:13}}>{r.Title}</div>
+                  <div style={{fontSize:11,color:overdue?'var(--red)':'var(--text-muted)',marginTop:2}}>{r['Due Date']?`Due ${r['Due Date']}`:'No date'}{r['Linked Type']&&r['Linked Type']!=='Standalone'?` · ${r['Linked Type']}`:''}{r.Notes?` · ${r.Notes}`:''}</div>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={()=>closeReminder(r)} disabled={closing===r.ID}>{closing===r.ID?<span className="spinner"/>:'✓ Close'}</button>
+              </div>);
+            })}</div>}
+          </div>
+          <div className="card">
+            <div className="card-title">Open Lending</div>
+            {openLends.length === 0 ? <div className="empty"><p>Nothing lent out ✓</p></div> :
+            <div className="table-wrap"><table>
+              <thead><tr><th>Person</th><th>Given</th><th>To Collect</th></tr></thead>
+              <tbody>{openLends.map(l => (
+                <tr key={l.ID}><td className="name">{l.Person}</td>
+                  <td>{l.Type==='Cash'?fmtINR(l.Amount):`${l.Type} ${fmtG(l['Weight Grams'])}`}</td>
+                  <td className="mono" style={{color:'var(--gold)'}}>{fmtINR(l.outstanding)}</td></tr>
+              ))}</tbody>
+            </table></div>}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="section-row" style={{marginBottom:12}}>
+            <div className="card-title" style={{marginBottom:0}}>Recent Activity</div>
+            <button className="btn btn-secondary btn-sm" onClick={()=>onNav('reserves')}>View ledger →</button>
+          </div>
+          {recentEntries.length === 0 ? <div className="empty"><p>No transactions yet.</p></div> :
+          <div className="table-wrap"><table>
+            <thead><tr><th>Date</th><th>Reserve</th><th>Dir</th><th>Qty</th><th>Note</th></tr></thead>
+            <tbody>{recentEntries.map(e => (
+              <tr key={e.ID}>
+                <td className="mono">{e.Date}</td>
+                <td className="name">{e.Reserve}</td>
+                <td><span className={`badge ${e.Direction==='In'?'badge-green':'badge-red'}`}>{e.Direction==='In'?'↓':'↑'}</span></td>
+                <td className="mono">{fmtReserve(e.Reserve, e.Qty)}</td>
+                <td style={{fontSize:12}}>{e.Category||e.Counterparty||e.Notes||'—'}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── STOCK (boxes — the physical opening inventory, tagged to reserves) ────────
+function Stock({ data, derived, onRefresh }) {
+  const [mode, setMode] = useState(null); // null | 'add' | {editing}
+  const [saving, setSaving] = useState(false);
+  const blank = { ID:'', 'Box Name':'', Metal:'Gold', Description:'', Location:'', Pieces:'', 'Gross Weight Grams':'', 'Weight Grams':'', Status:'In Stock', Notes:'', 'Reserve Type':'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p => ({...p,[k]:v}));
+
+  const openAdd = () => { setForm(blank); setMode('add'); };
+  const openEdit = (b) => { setForm({...blank, ...b}); setMode({ editing: b._row, created: b.Created }); };
+
+  // Reserve-type options matching the box metal
+  const rtOptions = (metal) => metal==='Silver' ? ['Silver','Old Silver'] : ['Ornaments','Gold Metal','Old Gold','Own Use Gold'];
+
+  const handleSave = async () => {
+    if (!form['Box Name'] || form['Weight Grams']==='') { alert('Box name and net weight are required.'); return; }
+    setSaving(true);
+    try {
+      const status = num(form['Weight Grams'])>0?'In Stock':'Empty';
+      if (mode === 'add') {
+        await appendRow('Stock', rowValues('Stock', { ...form, ID: uid('B'), Status: status, Created: todayStr() }));
+      } else {
+        await updateRow('Stock', mode.editing, rowValues('Stock', { ...form, Status: status, Created: mode.created||'' }));
+      }
+      setMode(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const sorted = [...data.stock].sort((a,b) => (a['Reserve Type']||'~').localeCompare(b['Reserve Type']||'~') || (a['Box Name']||'').localeCompare(b['Box Name']||''));
+  const untagged = data.stock.filter(b => !RESERVE_NAMES.includes((b['Reserve Type']||'').trim())).length;
+  // opening contribution per reserve (metals only)
+  const openingByReserve = {};
+  RESERVES.filter(r=>r.kind!=='Cash').forEach(r => openingByReserve[r.name] = derived.reserves.find(x=>x.name===r.name)?.stockOpening || 0);
+
+  return (
+    <div>
+      <div className="stats-row">
+        {RESERVES.filter(r=>r.kind!=='Cash').map(r => (
+          <div className="stat-card" key={r.name}>
+            <div className="stat-label">{r.emoji} {r.name}</div>
+            <div className={`stat-value ${r.kind==='Silver'?'silver':'gold'}`} style={{fontSize:18}}>{fmtG(openingByReserve[r.name])}</div>
+            <div className="stat-sub">opening from boxes</div>
+          </div>
+        ))}
+      </div>
+
+      {untagged>0 && <div className="card" style={{marginBottom:16,borderColor:'rgba(245,158,11,.3)'}}>
+        <div style={{fontSize:13,color:'var(--gold)'}}>⚠️ {untagged} box{untagged>1?'es':''} not yet tagged to a reserve — edit each box and set its <b>Reserve Type</b> so it counts towards an opening balance.</div>
+      </div>}
+
+      <div className="section-row">
+        <div>
+          <h3>Stock Boxes</h3>
+          <p style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Your physical opening inventory. Live balances move on the Reserves & Convert screens.</p>
+        </div>
+        <button className="btn btn-primary" onClick={openAdd}><Icon name="plus" size={14}/> Add Box</button>
+      </div>
+
+      {mode !== null && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-title">{mode==='add' ? 'New Box / Pocket / Container' : 'Edit Box'}</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Box Name *</label><input placeholder="e.g. Box 3 / Red Pocket" value={form['Box Name']} onChange={e=>f('Box Name',e.target.value)}/></div>
+            <div className="form-group"><label>Metal</label><select value={form.Metal} onChange={e=>{const m=e.target.value; setForm(p=>({...p,Metal:m, 'Reserve Type': rtOptions(m).includes(p['Reserve Type'])?p['Reserve Type']:''}));}}><option>Gold</option><option>Silver</option></select></div>
+            <div className="form-group"><label>Reserve Type <span style={{color:'var(--text-muted)'}}>which reserve</span></label>
+              <select value={form['Reserve Type']} onChange={e=>f('Reserve Type',e.target.value)}>
+                <option value="">— not tagged —</option>
+                {rtOptions(form.Metal).map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>What is inside</label><input placeholder="e.g. 4 rings, 2 chains, 1 bangle" value={form.Description} onChange={e=>f('Description',e.target.value)}/></div>
+            <div className="form-group"><label>Kept At (location)</label><input placeholder="e.g. Shop almirah / Bank locker" value={form.Location} onChange={e=>f('Location',e.target.value)}/></div>
+            <div className="form-group"><label>Pieces</label><input type="number" placeholder="7" value={form.Pieces} onChange={e=>f('Pieces',e.target.value)}/></div>
+            <div className="form-group"><label>Gross Weight (g) <span style={{color:'var(--text-muted)'}}>with stones</span></label><input type="number" step="0.001" placeholder="45.200" value={form['Gross Weight Grams']} onChange={e=>f('Gross Weight Grams',e.target.value)}/></div>
+            <div className="form-group"><label>Net Weight (g) * <span style={{color:'var(--text-muted)'}}>pure metal</span></label><input type="number" step="0.001" placeholder="42.350" value={form['Weight Grams']} onChange={e=>f('Weight Grams',e.target.value)}/></div>
+            <div className="form-group"><label>Notes</label><input placeholder="Purity, source..." value={form.Notes} onChange={e=>f('Notes',e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:mode==='add'?'Save Box':'Update Box'}</button>
+            <button className="btn btn-secondary" onClick={()=>setMode(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        {sorted.length === 0 ? <div className="empty"><p>No boxes yet — add your first box/pocket above.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Box</th><th>Reserve</th><th>Metal</th><th>What's Inside</th><th>Kept At</th><th>Pieces</th><th>Gross Wt</th><th>Net Wt</th><th></th></tr></thead>
+          <tbody>{sorted.map(b => {
+            const tagged = RESERVE_NAMES.includes((b['Reserve Type']||'').trim());
+            return (
+            <tr key={b.ID}>
+              <td className="name">{b['Box Name']}</td>
+              <td>{tagged ? <span className="badge badge-blue">{b['Reserve Type']}</span> : <span className="badge badge-gold">untagged</span>}</td>
+              <td><span className={`badge ${b.Metal==='Silver'?'badge-silver':'badge-gold'}`}>{b.Metal}</span></td>
+              <td>{b.Description||'—'}</td>
+              <td>{b.Location||'—'}</td>
+              <td className="mono">{b.Pieces||'—'}</td>
+              <td className="mono" style={{color:'var(--text-muted)'}}>{num(b['Gross Weight Grams'])>0?fmtG(b['Gross Weight Grams']):'—'}</td>
+              <td className="mono" style={{color:num(b['Weight Grams'])>0?'var(--text-primary)':'var(--text-muted)'}}>{fmtG(b['Weight Grams'])}</td>
+              <td><button className="btn btn-secondary btn-sm" title="Edit" onClick={()=>openEdit(b)}>✏️</button></td>
+            </tr>);
+          })}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── CONVERT / NEW TRANSACTION — universal multi-reserve conversion ───────────
+function legQty(leg) { return isCash(leg.reserve) ? num(leg.value) : qtyFromGold(leg.weight, leg.touch, leg.margin, leg.direct); }
+function legValue(leg) { return isCash(leg.reserve) ? num(leg.value) : num(leg.value); }
+
+// Rebuild an editable leg from a saved Entry row
+function entryToLeg(e) {
+  const cash = isCash(e.Reserve);
+  const hasWeight = e['Weight Grams'] !== '' && e['Weight Grams'] !== undefined;
+  return {
+    key: uid('lg'), direction: e.Direction, reserve: e.Reserve, subtype: e.Subtype || '',
+    weight: cash ? '' : (hasWeight ? e['Weight Grams'] : ''),
+    touch:  cash ? '92' : (e.Touch !== '' ? e.Touch : '92'),
+    margin: cash ? '0'  : (e.Margin !== '' ? e.Margin : '0'),
+    direct: cash ? '' : (hasWeight ? '' : e.Qty),
+    value:  cash ? e.Qty : (e.Value || ''),
+  };
+}
+
+function Convert({ data, derived, onRefresh, onDone, edit }) {
+  const [saving, setSaving] = useState(false);
+  const [date, setDate] = useState(edit ? edit.date : todayStr());
+  const [counterparty, setCounterparty] = useState(edit ? edit.counterparty : '');
+  const [notes, setNotes] = useState(edit ? edit.notes : '');
+  const [remindDate, setRemindDate] = useState('');
+  const [remindTitle, setRemindTitle] = useState('');
+
+  const newLeg = (direction) => ({ key: uid('lg'), direction, reserve: direction==='Out'?'Ornaments':'Cash', subtype:'', weight:'', touch:'92', margin:'0', direct:'', value:'' });
+  const [legs, setLegs] = useState(edit ? edit.entries.map(entryToLeg) : [newLeg('Out'), newLeg('In')]);
+  const upd = (key, patch) => setLegs(ls => ls.map(l => l.key===key ? { ...l, ...patch } : l));
+  const addLeg = (dir) => setLegs(ls => [...ls, newLeg(dir)]);
+  const delLeg = (key) => setLegs(ls => ls.filter(l => l.key!==key));
+
+  const outLegs = legs.filter(l => l.direction==='Out');
+  const inLegs  = legs.filter(l => l.direction==='In');
+  const outValue = outLegs.reduce((s,l)=>s+legValue(l),0);
+  const inValue  = inLegs.reduce((s,l)=>s+legValue(l),0);
+  const diff = Math.round((outValue - inValue)*100)/100;
+
+  const handleSave = async () => {
+    const active = legs.filter(l => legQty(l) > 0 || legValue(l) > 0);
+    if (active.length === 0) { alert('Add at least one leg with a quantity or value.'); return; }
+    // Validate metal/cash OUT legs against current balance (skip when editing — old legs are already counted)
+    if (!edit) for (const l of active) {
+      if (l.direction==='Out' && !isCash(l.reserve)) {
+        const bal = derived.balOf(l.reserve);
+        if (legQty(l) > bal + 0.001) { alert(`"${l.reserve}" has only ${fmtG(bal)} — this leg removes ${fmtG(legQty(l))}.`); return; }
+      }
+      if (l.direction==='Out' && isCash(l.reserve)) {
+        const bal = derived.balOf(l.reserve);
+        if (num(l.value) > bal + 0.5) { alert(`"${l.reserve}" has only ${fmtINR(bal)} — this leg removes ${fmtINR(num(l.value))}.`); return; }
+      }
+    }
+    setSaving(true);
+    try {
+      // Editing replaces the transaction: delete the old legs, re-post under the same id.
+      const txnId = edit ? edit.txnId : uid('TX');
+      if (edit) await deleteTxn(edit.txnId);
+      for (const l of active) {
+        await addEntry(txnId, date, {
+          reserve: l.reserve, subtype: l.subtype, direction: l.direction, qty: legQty(l),
+          weight: isCash(l.reserve)?'':l.weight, touch: isCash(l.reserve)?'':l.touch, margin: isCash(l.reserve)?'':l.margin,
+          value: legValue(l), counterparty, category: 'Convert', ref: '', notes,
+        });
+      }
+      if (!edit && (remindDate || remindTitle.trim())) {
+        await appendRow('Reminders', [uid('RM'), todayStr(), remindDate, remindTitle.trim() || `Follow up ${counterparty||'transaction'}`, 'Transaction', txnId, 'Open', notes]);
+      }
+      onRefresh();
+      onDone();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const renderLeg = (l) => {
+    const cash = isCash(l.reserve);
+    const qty = legQty(l);
+    return (
+      <div className="item-row" key={l.key}>
+        <div className="form-group"><label>Reserve</label>
+          <select value={l.reserve} onChange={e=>upd(l.key,{reserve:e.target.value, subtype:''})}>
+            {derived.reserves.map(r=><option key={r.name} value={r.name}>{r.name} ({fmtReserve(r.name, r.balance)})</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Subtype</label>
+          {(() => {
+            // Configured categories (Reserves sheet) + distinct box names tagged to this reserve
+            const cfg = derived.reserves.find(r => r.name === l.reserve)?.subtypes || [];
+            const boxNames = cash ? [] : data.stock.filter(b => b['Reserve Type'] === l.reserve).map(b => b['Box Name']).filter(Boolean);
+            const opts = [...new Set([...cfg, ...boxNames])];
+            return opts.length > 0 ? (
+              <select value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}>
+                <option value="">— select pocket / type —</option>
+                {opts.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            ) : (
+              <input placeholder="optional" value={l.subtype} onChange={e=>upd(l.key,{subtype:e.target.value})}/>
+            );
+          })()}
+        </div>
+        {cash ? (
+          <div className="form-group"><label>Amount ₹</label><input type="number" value={l.value} onChange={e=>upd(l.key,{value:e.target.value})}/></div>
+        ) : (<>
+          <div className="form-group"><label>Weight (g)</label><input type="number" step="0.001" value={l.weight} onChange={e=>upd(l.key,{weight:e.target.value})} disabled={l.direct!==''}/></div>
+          <div className="form-group"><label>Touch</label><input type="number" step="0.1" value={l.touch} onChange={e=>upd(l.key,{touch:e.target.value})} disabled={l.direct!==''}/></div>
+          <div className="form-group"><label>Margin</label><input type="number" step="0.1" value={l.margin} onChange={e=>upd(l.key,{margin:e.target.value})} disabled={l.direct!==''}/></div>
+          <div className="form-group"><label>Direct g <span style={{color:'var(--text-muted)'}}>override</span></label><input type="number" step="0.001" placeholder="—" value={l.direct} onChange={e=>upd(l.key,{direct:e.target.value})}/></div>
+          <div className="form-group"><label>Value ₹ <span style={{color:'var(--text-muted)'}}>optional</span></label><input type="number" value={l.value} onChange={e=>upd(l.key,{value:e.target.value})}/></div>
+        </>)}
+        <button className="row-del" title="Remove" onClick={()=>delLeg(l.key)}>✕</button>
+        {!cash && qty>0 && <div style={{gridColumn:'1/-1',fontSize:11,color:'var(--gold)',marginTop:-2}}>→ {fmtG(qty)} into/out of {l.reserve}{l.direct===''?` (${l.weight||0}g × (${l.touch||0}+${l.margin||0})/100)`:' (direct)'}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div className="card">
+        <div className="card-title">{edit ? '✏️ Edit Transaction' : 'Transaction Details'}</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+          <div className="form-group"><label>Counterparty <span style={{color:'var(--text-muted)'}}>customer / person</span></label><input placeholder="Name (optional)" value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="What is this transaction" value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="section-row" style={{marginBottom:10}}>
+          <div className="card-title" style={{marginBottom:0}}>↑ Removed (Out) <span style={{fontWeight:400,textTransform:'none',color:'var(--text-muted)'}}>— reserves that go down</span></div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>addLeg('Out')}><Icon name="minus" size={12}/> Add Out</button>
+        </div>
+        {outLegs.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>Nothing removed.</div>}
+        {outLegs.map(renderLeg)}
+      </div>
+
+      <div className="card">
+        <div className="section-row" style={{marginBottom:10}}>
+          <div className="card-title" style={{marginBottom:0}}>↓ Added (In) <span style={{fontWeight:400,textTransform:'none',color:'var(--text-muted)'}}>— reserves that go up</span></div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>addLeg('In')}><Icon name="plus" size={12}/> Add In</button>
+        </div>
+        {inLegs.length===0 && <div style={{fontSize:12,color:'var(--text-muted)'}}>Nothing added.</div>}
+        {inLegs.map(renderLeg)}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Balance & Save</div>
+        <div className="settle-box">
+          <div className="settle-line"><span>Total value removed (out)</span><span className="mono">{fmtINR(outValue)}</span></div>
+          <div className="settle-line"><span>Total value added (in)</span><span className="mono">{fmtINR(inValue)}</span></div>
+          <div className="settle-line total"><span>{Math.abs(diff)<.5 ? '✓ Value balanced' : diff>0 ? 'Out exceeds In by' : 'In exceeds Out by'}</span><span className="mono" style={{color:Math.abs(diff)<.5?'var(--green)':'var(--gold)'}}>{fmtINR(Math.abs(diff))}</span></div>
+        </div>
+        <div style={{fontSize:11,color:'var(--text-muted)',marginTop:8}}>Value balance is only a cross-check (fill ₹ value on metal legs if you want it to tally) — the reserve quantities always post regardless.</div>
+        {!edit && <div className="form-grid" style={{marginTop:14}}>
+          <div className="form-group"><label>🔔 Reminder date <span style={{color:'var(--text-muted)'}}>optional</span></label><input type="date" value={remindDate} onChange={e=>setRemindDate(e.target.value)}/></div>
+          <div className="form-group"><label>Reminder note</label><input placeholder="e.g. collect balance / give receipt" value={remindTitle} onChange={e=>setRemindTitle(e.target.value)}/></div>
+        </div>}
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<><span className="spinner"/>&nbsp;Saving…</>:edit?'Update Transaction':'Save Transaction'}</button>
+          <button className="btn btn-secondary" onClick={onDone}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TRANSACTIONS — entries grouped by Txn ID, view & edit ────────────────────
+function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
+  const [filter, setFilter] = useState('all');
+  const [openTxn, setOpenTxn] = useState(null);
+  const [busy, setBusy] = useState('');
+
+  // Group entry rows by Txn ID
+  const groups = {};
+  data.entries.forEach(e => { const k = e['Txn ID'] || e.ID; (groups[k] = groups[k] || []).push(e); });
+  const list = Object.entries(groups).map(([txnId, legs]) => {
+    const first = legs[0];
+    const cats = [...new Set(legs.map(l => l.Category).filter(Boolean))];
+    const editable = legs.every(l => (l.Category || 'Convert') === 'Convert');
+    return {
+      txnId, legs, date: first.Date, counterparty: first.Counterparty || '', notes: first.Notes || '',
+      cats, editable, entryRows: legs.map(l => l._row),
+      kind: cats.includes('Lending') || cats.includes('Lending Return') ? 'Lending' : cats.includes('Expense') ? 'Expense' : 'Convert',
+    };
+  }).sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.txnId||'').localeCompare(a.txnId||''));
+
+  const shown = list.filter(g => filter==='all' ? true : g.kind===filter);
+
+  const doDelete = async (g) => {
+    if (!window.confirm(`Delete this transaction (${g.legs.length} legs)? Reserve balances will adjust. This permanently removes the rows.`)) return;
+    setBusy(g.txnId);
+    try { await deleteTxn(g.txnId); onRefresh(); }
+    catch(e) { alert('Error: '+e.message); }
+    setBusy('');
+  };
+
+  const kindBadge = { Convert:'badge-blue', Lending:'badge-gold', Expense:'badge-red' };
+
+  return (
+    <div>
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All ({list.length})</button>
+          <button className={`tab ${filter==='Convert'?'active':''}`} onClick={()=>setFilter('Convert')}>Conversions</button>
+          <button className={`tab ${filter==='Lending'?'active':''}`} onClick={()=>setFilter('Lending')}>Lending</button>
+          <button className={`tab ${filter==='Expense'?'active':''}`} onClick={()=>setFilter('Expense')}>Expenses</button>
+        </div>
+        <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+      </div>
+
+      {shown.length===0 ? <div className="card"><div className="empty"><p>No transactions here yet.</p></div></div> :
+      <div className="gap-12">{shown.map(g => {
+        const isOpen = openTxn===g.txnId;
+        return (
+        <div className="card" key={g.txnId} style={{padding:0,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenTxn(o=>o===g.txnId?null:g.txnId)}>
+            <div>
+              <div style={{fontWeight:600,fontSize:14}}>{g.counterparty || (g.kind==='Expense'?'Expense':'Transaction')} <span className={`badge ${kindBadge[g.kind]}`} style={{marginLeft:6}}>{g.kind}</span></div>
+              <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{g.date} · {g.legs.length} leg{g.legs.length>1?'s':''}{g.notes?` · ${g.notes}`:''}</div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+                {g.legs.map(l => (
+                  <span key={l.ID} className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓':'↑'} {l.Reserve} {fmtReserve(l.Reserve, l.Qty)}</span>
+                ))}
+              </div>
+              <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
+            </div>
+          </div>
+
+          {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+            <div className="table-wrap"><table>
+              <thead><tr><th>Dir</th><th>Reserve</th><th>Subtype</th><th>Qty</th><th>Touch</th><th>Value</th><th>Note</th></tr></thead>
+              <tbody>{g.legs.map(l => (
+                <tr key={l.ID}>
+                  <td><span className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓ In':'↑ Out'}</span></td>
+                  <td className="name">{l.Reserve}</td>
+                  <td>{l.Subtype||'—'}</td>
+                  <td className="mono">{fmtReserve(l.Reserve, l.Qty)}</td>
+                  <td className="mono" style={{color:'var(--text-muted)'}}>{l.Touch?`${l.Touch}${num(l.Margin)?'+'+l.Margin:''}`:'—'}</td>
+                  <td className="mono">{l.Value?fmtINR(l.Value):'—'}</td>
+                  <td style={{fontSize:12}}>{l.Notes||'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+            <div className="btn-row">
+              {g.editable
+                ? <button className="btn btn-primary btn-sm" onClick={()=>onEdit({ txnId:g.txnId, date:g.date, counterparty:g.counterparty, notes:g.notes, entryRows:g.entryRows, entries:g.legs })}>✏️ Edit</button>
+                : <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit this on the {g.kind} page — it is linked to that {g.kind.toLowerCase()} record.</span>}
+              <button className="btn btn-danger btn-sm" onClick={()=>doDelete(g)} disabled={busy===g.txnId}>{busy===g.txnId?<span className="spinner"/>:'🗑 Delete'}</button>
+            </div>
+          </div>}
+        </div>);
+      })}</div>}
+    </div>
+  );
+}
+
+// ── RESERVES — balances, opening, subtypes & per-reserve ledger ──────────────
+function ReservesPage({ data, derived, onRefresh, onNew }) {
+  const [openRes, setOpenRes] = useState(null);
+  const [editRes, setEditRes] = useState(null); // reserve name being edited
+  const [saving, setSaving] = useState(false);
+  const [edit, setEdit] = useState({ opening:'', subtypes:'' });
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [bank, setBank] = useState({ name:'', opening:'', notes:'' });
+
+  const startEdit = (r) => { setEditRes(r.name); setEdit({ opening: r.isBank ? (r.bankOpening||0) : (r.manualOpening||0), subtypes: r.isBank ? (r.bankNotes||'') : (r.subtypes||[]).join(', ') }); };
+  const saveEdit = async (r) => {
+    setSaving(true);
+    try {
+      if (r.isBank) {
+        await updateRow('Banks', r.bankRow, rowValues('Banks', { Name:r.name, 'Opening Balance':num(edit.opening), Notes:edit.subtypes }));
+      } else {
+        await updateRow('Reserves', r._row, rowValues('Reserves', { Reserve:r.name, Kind:r.kind, Unit:r.unit, 'Opening Balance':num(edit.opening), Subtypes:edit.subtypes, Notes:'' }));
+      }
+      setEditRes(null); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const addBank = async () => {
+    const name = bank.name.trim();
+    if (!name) { alert('Enter a bank/account name.'); return; }
+    if (derived.reserves.some(r => r.name.toLowerCase() === name.toLowerCase())) { alert('A reserve with that name already exists.'); return; }
+    setSaving(true);
+    try {
+      await appendRow('Banks', rowValues('Banks', { Name:name, 'Opening Balance':num(bank.opening), Notes:bank.notes }));
+      setBank({ name:'', opening:'', notes:'' }); setShowAddBank(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">🥇 Gold Reserve (combined)</div><div className="stat-value gold">{fmtG(derived.goldTotal)}</div><div className="stat-sub">Ornaments + Metal + Old Gold</div></div>
+        <div className="stat-card"><div className="stat-label">🥈 Silver Reserve (combined)</div><div className="stat-value silver">{fmtG(derived.silverTotal)}</div><div className="stat-sub">Silver + Old Silver</div></div>
+        <div className="stat-card"><div className="stat-label">💵 Cash</div><div className="stat-value green">{fmtINR(derived.cashBal)}</div><div className="stat-sub">In hand</div></div>
+        <div className="stat-card"><div className="stat-label">🏦 Banks total</div><div className="stat-value green">{fmtINR(derived.bankTotal)}</div><div className="stat-sub">{derived.banks.length} account{derived.banks.length!==1?'s':''}</div></div>
+      </div>
+
+      <div className="section-row">
+        <h3>Reserves</h3>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-secondary" onClick={()=>{setBank({name:'',opening:'',notes:''});setShowAddBank(o=>!o);}}>🏦 Add Bank Account</button>
+          <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+        </div>
+      </div>
+
+      {showAddBank && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">New Bank / Account Reserve</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Account Name *</label><input placeholder="e.g. Ramkumar HDFC" value={bank.name} onChange={e=>setBank(p=>({...p,name:e.target.value}))}/></div>
+          <div className="form-group"><label>Opening Balance (₹)</label><input type="number" value={bank.opening} onChange={e=>setBank(p=>({...p,opening:e.target.value}))}/></div>
+          <div className="form-group"><label>Notes</label><input placeholder="Account no. / branch" value={bank.notes} onChange={e=>setBank(p=>({...p,notes:e.target.value}))}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={addBank} disabled={saving}>{saving?<span className="spinner"/>:'Add Account'}</button>
+          <button className="btn btn-secondary" onClick={()=>setShowAddBank(false)}>Cancel</button>
+        </div>
+      </div>}
+
+      <div className="gap-12">{derived.reserves.map(r => {
+        const entries = data.entries.filter(e => e.Reserve===r.name).sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
+        const isOpen = openRes===r.name;
+        return (
+        <div className="card" key={r.name} style={{padding:0,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenRes(o=>o===r.name?null:r.name)}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{r.emoji}</div>
+              <div>
+                <div style={{fontWeight:600,fontSize:14}}>{r.name}</div>
+                <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>opening {fmtReserve(r.name, r.opening)} · {entries.length} entries{r.subtypes.length?` · ${r.subtypes.join(', ')}`:''}</div>
+              </div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div className={`mono`} style={{fontSize:17,color:r.kind==='Silver'?'var(--silver)':r.kind==='Cash'?'var(--green)':'var(--gold)'}}>{fmtReserve(r.name, r.balance)}</div>
+              <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();startEdit(r);}}>✏️</button>
+              <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
+            </div>
+          </div>
+
+          {editRes===r.name && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px',background:'var(--navy)'}}>
+            <div className="form-grid">
+              <div className="form-group"><label>{r.isBank?'Opening Balance (₹)':`Manual Opening ${isCash(r.name)?'(₹)':'(g) — adds to box-tagged opening'}`}</label><input type="number" step="0.001" value={edit.opening} onChange={e=>setEdit(p=>({...p,opening:e.target.value}))}/></div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}><label>{r.isBank?'Notes':'Subtypes'} <span style={{color:'var(--text-muted)'}}>{r.isBank?'account no. / branch':'comma separated'}</span></label><input placeholder={r.isBank?'HDFC ••1234':'e.g. 22k, 24k, coins'} value={edit.subtypes} onChange={e=>setEdit(p=>({...p,subtypes:e.target.value}))}/></div>
+            </div>
+            {!isCash(r.name) && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Box-tagged opening: {fmtG(r.stockOpening)} (from Stock). Total opening = box-tagged + manual.</div>}
+            {r.isBank && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Balance = opening + all In/Out entries for this account. (Account name can't be changed here — past entries reference it.)</div>}
+            <div className="btn-row">
+              <button className="btn btn-primary btn-sm" onClick={()=>saveEdit(r)} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setEditRes(null)}>Cancel</button>
+            </div>
+          </div>}
+
+          {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'12px 18px'}}>
+            <div style={{display:'flex',gap:18,flexWrap:'wrap',fontSize:12,color:'var(--text-secondary)',marginBottom:10}}>
+              <span>Opening: <b className="mono">{fmtReserve(r.name, r.opening)}</b></span>
+              <span>Net movement: <b className="mono" style={{color:r.moved>=0?'var(--green)':'var(--red)'}}>{r.moved>=0?'+':''}{fmtReserve(r.name, r.moved)}</b></span>
+              <span>Balance: <b className="mono">{fmtReserve(r.name, r.balance)}</b></span>
+            </div>
+            {entries.length===0 ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No movements yet.</div> :
+            <div className="table-wrap"><table>
+              <thead><tr><th>Date</th><th>Dir</th><th>Qty</th><th>Touch</th><th>Value</th><th>Who/Note</th></tr></thead>
+              <tbody>{entries.slice(0,50).map(e=>(
+                <tr key={e.ID}>
+                  <td className="mono">{e.Date}</td>
+                  <td><span className={`badge ${e.Direction==='In'?'badge-green':'badge-red'}`}>{e.Direction==='In'?'↓ In':'↑ Out'}</span></td>
+                  <td className="mono">{fmtReserve(r.name, e.Qty)}</td>
+                  <td className="mono" style={{color:'var(--text-muted)'}}>{e.Touch?`${e.Touch}${num(e.Margin)?'+'+e.Margin:''}`:'—'}</td>
+                  <td className="mono">{e.Value?fmtINR(e.Value):'—'}</td>
+                  <td style={{fontSize:12}}>{e.Counterparty||e.Category||e.Notes||'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>}
+          </div>}
+        </div>);
+      })}</div>
+    </div>
+  );
+}
+
+// ── EXPENSES — money out of Cash reserve ─────────────────────────────────────
+function Expenses({ data, derived, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
+  const [form, setForm] = useState({ date: todayStr(), reserve:'Cash', amount:'', subtype:'', notes:'' });
+  const f = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const expenses = data.entries.filter(e => isCash(e.Reserve) && e.Direction==='Out' && e.Category==='Expense')
+    .sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
+
+  const handleSave = async () => {
+    if (num(form.amount)<=0) { alert('Enter the amount.'); return; }
+    setSaving(true);
+    try {
+      await addEntry(uid('EX'), form.date, { reserve:form.reserve, subtype:form.subtype, direction:'Out', qty:num(form.amount), value:num(form.amount), category:'Expense', notes:form.notes });
+      setForm({ date: todayStr(), reserve:form.reserve, amount:'', subtype:'', notes:'' }); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">💵 Cash Balance</div><div className={`stat-value ${derived.cashBal>=0?'green':'red'}`}>{fmtINR(derived.cashBal)}</div></div>
+        <div className="stat-card"><div className="stat-label">🏦 Banks total</div><div className="stat-value green">{fmtINR(derived.bankTotal)}</div><div className="stat-sub">{derived.banks.length} account{derived.banks.length!==1?'s':''}</div></div>
+        <div className="stat-card"><div className="stat-label">Total Expenses Logged</div><div className="stat-value gold">{fmtINR(expenses.reduce((s,e)=>s+num(e.Qty),0))}</div><div className="stat-sub">{expenses.length} entries</div></div>
+      </div>
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Record an Expense</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
+          <div className="form-group"><label>Paid From</label><select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{cashNames.map(n=><option key={n} value={n}>{n} ({fmtINR(derived.balOf(n))})</option>)}</select></div>
+          <div className="form-group"><label>Amount (₹) *</label><input type="number" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
+          <div className="form-group"><label>Category</label><input placeholder="e.g. rent, salary, tea" value={form.subtype} onChange={e=>f('subtype',e.target.value)}/></div>
+          <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save Expense'}</button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-title">Recent Expenses</div>
+        {expenses.length===0 ? <div className="empty"><p>No expenses recorded yet.</p></div> :
+        <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Paid From</th><th>Category</th><th>Amount</th><th>Notes</th></tr></thead>
+          <tbody>{expenses.slice(0,100).map(e=>(
+            <tr key={e.ID}><td className="mono">{e.Date}</td><td>{e.Reserve}</td><td>{e.Subtype||'—'}</td><td className="mono" style={{color:'var(--red)'}}>−{fmtINR(e.Qty)}</td><td style={{fontSize:12}}>{e.Notes||'—'}</td></tr>
+          ))}</tbody>
+        </table></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── REMINDERS ────────────────────────────────────────────────────────────────
+function Reminders({ data, derived, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ due: '', title:'', notes:'' });
+  const f = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const [filter, setFilter] = useState('open');
+  const all = [...data.reminders].sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
+  const shown = all.filter(r => filter==='open' ? (r.Status||'Open')!=='Closed' : filter==='closed' ? r.Status==='Closed' : true);
+
+  const add = async () => {
+    if (!form.title.trim()) { alert('Enter a title.'); return; }
+    setSaving(true);
+    try {
+      await appendRow('Reminders', [uid('RM'), todayStr(), form.due, form.title.trim(), 'Standalone', '', 'Open', form.notes]);
+      setForm({ due:'', title:'', notes:'' }); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+  const toggle = async (r) => {
+    setSaving(true);
+    try { await updateRow('Reminders', r._row, rowValues('Reminders', { ...r, Status: r.Status==='Closed'?'Open':'Closed' })); onRefresh(); }
+    catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Add a Reminder</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Due Date</label><input type="date" value={form.due} onChange={e=>f('due',e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Title *</label><input placeholder="e.g. Collect balance from Kumar" value={form.title} onChange={e=>f('title',e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row"><button className="btn btn-primary" onClick={add} disabled={saving}>{saving?<span className="spinner"/>:'Add Reminder'}</button></div>
+      </div>
+
+      <div className="section-row">
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={`tab ${filter==='open'?'active':''}`} onClick={()=>setFilter('open')}>Open ({all.filter(r=>(r.Status||'Open')!=='Closed').length})</button>
+          <button className={`tab ${filter==='closed'?'active':''}`} onClick={()=>setFilter('closed')}>Closed</button>
+          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All</button>
+        </div>
+      </div>
+
+      <div className="card">
+        {shown.length===0 ? <div className="empty"><p>Nothing here.</p></div> :
+        <div className="gap-12">{shown.map(r => {
+          const closed = r.Status==='Closed';
+          const overdue = !closed && r['Due Date'] && r['Due Date'] < todayStr();
+          return (<div key={r.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'12px 14px',background:'var(--navy)',borderRadius:8,border:`1px solid ${overdue?'rgba(239,68,68,.3)':'var(--border)'}`}}>
+            <div>
+              <div style={{fontWeight:500,fontSize:13,textDecoration:closed?'line-through':'none',color:closed?'var(--text-muted)':'var(--text-primary)'}}>{r.Title}</div>
+              <div style={{fontSize:11,color:overdue?'var(--red)':'var(--text-muted)',marginTop:2}}>{r['Due Date']?`Due ${r['Due Date']}`:'No date'}{overdue?' · overdue':''}{r['Linked Type']&&r['Linked Type']!=='Standalone'?` · ${r['Linked Type']}`:''}{r.Notes?` · ${r.Notes}`:''}</div>
+            </div>
+            <button className={`btn btn-sm ${closed?'btn-secondary':'btn-primary'}`} onClick={()=>toggle(r)} disabled={saving}>{closed?'Reopen':'✓ Close'}</button>
+          </div>);
+        })}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── LENDING ──────────────────────────────────────────────────────────────────
+const lendReserveOptions = (type, cashNames) => type==='Cash' ? (cashNames && cashNames.length ? cashNames : ['Cash']) : type==='Gold' ? ['Old Gold','Gold Metal','Ornaments','Own Use Gold'] : ['Old Silver','Silver'];
+
+function Lending({ data, derived, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
+  const blank = { date: todayStr(), person:'', phone:'', type:'Cash', reserve:'Cash', weight:'', amount:'', interest:'', due:'', notes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+  const setType = (t) => setForm(p => ({ ...p, type:t, reserve: lendReserveOptions(t, cashNames)[0] }));
+
+  const handleSave = async () => {
+    if (!form.person.trim()) { alert('Person name required.'); return; }
+    if (num(form.amount)<=0) { alert('Enter the ₹ value of what is given (even for gold, enter its value).'); return; }
+    if (form.type!=='Cash' && num(form.weight)<=0) { alert('Enter the weight given.'); return; }
+    const qty = form.type==='Cash' ? num(form.amount) : num(form.weight);
+    const bal = derived.balOf(form.reserve);
+    if (qty > bal + (isCash(form.reserve)?0.5:0.001)) { alert(`"${form.reserve}" has only ${fmtReserve(form.reserve,bal)} — cannot lend ${fmtReserve(form.reserve,qty)}.`); return; }
+    setSaving(true);
+    try {
+      const id = uid('LN');
+      const interestType = num(form.interest)>0 ? 'Simple' : 'None';
+      await appendRow('Lending', rowValues('Lending', {
+        ID:id, Date:form.date, Person:form.person.trim(), Phone:form.phone, Type:form.type, Reserve:form.reserve,
+        'Weight Grams': form.type==='Cash'?'':num(form.weight), Amount:num(form.amount), 'Interest %':num(form.interest),
+        'Interest Type':interestType, 'Due Date':form.due, Status:'Open', Notes:form.notes,
+      }));
+      await addEntry(id, form.date, { reserve:form.reserve, direction:'Out', qty,
+        weight: form.type==='Cash'?'':form.weight, value:num(form.amount), category:'Lending', ref:id,
+        counterparty:form.person.trim(), notes:`Lent to ${form.person.trim()}` });
+      if (form.due) {
+        await appendRow('Reminders', [uid('RM'), todayStr(), form.due, `Lending return — ${form.person.trim()}`, 'Lending', id, 'Open', form.notes]);
+      }
+      setForm(blank); setShowForm(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const lends = [...derived.lendOutstanding].sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
+  const open = lends.filter(l=>l.outstanding>.5);
+  const closed = lends.filter(l=>l.outstanding<=.5);
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">Outstanding to Collect</div><div className="stat-value gold">{fmtINR(derived.lendingDue)}</div><div className="stat-sub">{open.length} people · incl. interest till today</div></div>
+      </div>
+      <div className="section-row">
+        <h3>Lending / Help Given</h3>
+        <button className="btn btn-primary" onClick={()=>{setForm(blank);setShowForm(o=>!o);}}><Icon name="plus" size={14}/> Give Cash / Gold</button>
+      </div>
+
+      {showForm && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">New Lending</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Person *</label><input placeholder="Name" value={form.person} onChange={e=>f('person',e.target.value)}/></div>
+          <div className="form-group"><label>Phone</label><input value={form.phone} onChange={e=>f('phone',e.target.value)}/></div>
+          <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
+          <div className="form-group"><label>What Given</label><select value={form.type} onChange={e=>setType(e.target.value)}><option>Cash</option><option>Gold</option><option>Silver</option></select></div>
+          <div className="form-group"><label>From Reserve <span style={{color:'var(--text-muted)'}}>{fmtReserve(form.reserve, derived.balOf(form.reserve))} avail</span></label>
+            <select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{lendReserveOptions(form.type, cashNames).map(n=><option key={n} value={n}>{n}</option>)}</select>
+          </div>
+          {form.type!=='Cash' && <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" value={form.weight} onChange={e=>f('weight',e.target.value)}/></div>}
+          <div className="form-group"><label>Value Given (₹) *</label><input type="number" placeholder="Principal value" value={form.amount} onChange={e=>f('amount',e.target.value)}/></div>
+          <div className="form-group"><label>Interest % per month</label><input type="number" step="0.1" placeholder="0 = free help" value={form.interest} onChange={e=>f('interest',e.target.value)}/></div>
+          <div className="form-group"><label>Return By (date)</label><input type="date" value={form.due} onChange={e=>f('due',e.target.value)}/></div>
+          <div className="form-group"><label>Notes</label><input placeholder="Reason / agreement" value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+          <button className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
+        </div>
+      </div>}
+
+      {open.length===0 && closed.length===0 ? <div className="card"><div className="empty"><p>Nothing lent out yet.</p></div></div> : <>
+        {open.length>0 && <div className="gap-12" style={{marginBottom:16}}>{open.map(l=><LendCard key={l.ID} l={l} data={data} onRefresh={onRefresh}/>)}</div>}
+        {closed.length>0 && <CollapsibleSection title={`✓ Closed / fully returned (${closed.length})`}>
+          <div className="gap-12">{closed.map(l=><LendCard key={l.ID} l={l} data={data} onRefresh={onRefresh}/>)}</div>
+        </CollapsibleSection>}
+      </>}
+    </div>
+  );
+}
+
+function LendCard({ l, data, onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pay, setPay] = useState({ date: todayStr(), mode:'Cash', amount:'', weight:'', notes:'' });
+  const payments = data.payments.filter(p=>p['Ref Type']==='Lending' && p['Ref ID']===l.ID);
+  const overdue = l['Due Date'] && l.outstanding>.5 && l['Due Date'] < todayStr();
+
+  const destReserve = (mode) => mode==='Gold' ? 'Old Gold' : mode==='Silver' ? 'Old Silver' : 'Cash';
+
+  const handlePay = async () => {
+    const amt = num(pay.amount);
+    if (amt<=0) { alert('Enter the ₹ value returned.'); return; }
+    const metalReturn = pay.mode==='Gold'||pay.mode==='Silver';
+    if (metalReturn && num(pay.weight)<=0) { alert('Enter the weight returned.'); return; }
+    setSaving(true);
+    try {
+      await appendRow('Payments', rowValues('Payments', { ID:uid('P'), Date:pay.date, 'Ref Type':'Lending', 'Ref ID':l.ID, Person:l.Person, Mode:pay.mode, Amount:amt, 'Weight Grams':metalReturn?num(pay.weight):'', Notes:pay.notes }));
+      const dest = destReserve(pay.mode);
+      await addEntry(l.ID, pay.date, { reserve:dest, direction:'In', qty: metalReturn?num(pay.weight):amt,
+        weight: metalReturn?pay.weight:'', value:amt, category:'Lending Return', ref:l.ID, counterparty:l.Person, notes:`From ${l.Person}` });
+      if (l.outstanding - amt < .5 && l._row) {
+        await updateRow('Lending', l._row, rowValues('Lending', { ...l, Status:'Closed' }));
+      }
+      setShowPay(false); setPay({ date: todayStr(), mode:'Cash', amount:'', weight:'', notes:'' });
+      onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpen(o=>!o)}>
+        <div>
+          <div style={{fontWeight:600,fontSize:14}}>{l.Person} <span style={{fontWeight:400,fontSize:12,color:'var(--text-muted)'}}>{l.Phone}</span></div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:1}}>
+            {l.Date} · gave {l.Type==='Cash'?fmtINR(l.Amount):`${l.Type} ${fmtG(l['Weight Grams'])} (worth ${fmtINR(l.Amount)})`}
+            {num(l['Interest %'])>0 ? <> · {l['Interest %']}%/mo interest</> : <> · free of cost</>}
+            {l['Due Date'] && <> · return by <span style={{color:overdue?'var(--red)':'var(--text-secondary)'}}>{l['Due Date']}</span></>}
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          {overdue && <span className="badge badge-red">Overdue</span>}
+          <span className={`badge ${l.outstanding<=.5?'badge-green':'badge-gold'}`}>{l.outstanding<=.5?'Returned ✓':`To collect ${fmtINR(l.outstanding)}`}</span>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+        {l.Notes && <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:10}}>📝 {l.Notes}</div>}
+        <div style={{display:'flex',gap:18,flexWrap:'wrap',marginBottom:12,fontSize:12,color:'var(--text-secondary)'}}>
+          <span>Principal: <b className="mono">{fmtINR(l.Amount)}</b></span>
+          <span>Interest till today{num(l['Interest %'])>0?` (${l['Interest %']}%/mo)`:''}: <b className="mono" style={{color:l.interest>0?'var(--gold)':'inherit'}}>{fmtINR(l.interest)}</b></span>
+          <span>Returned so far: <b className="mono" style={{color:'var(--green)'}}>{fmtINR(l.paid)}</b></span>
+          <span>Outstanding: <b className="mono" style={{color:l.outstanding>.5?'var(--gold)':'var(--green)'}}>{fmtINR(Math.max(0,l.outstanding))}</b></span>
+        </div>
+        {payments.length>0 && <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Mode</th><th>Value</th><th>Weight</th><th>Notes</th></tr></thead>
+          <tbody>{payments.map(p=>(<tr key={p.ID}><td className="mono">{p.Date}</td><td>{p.Mode}</td><td className="mono">{fmtINR(p.Amount)}</td><td className="mono">{p['Weight Grams']?fmtG(p['Weight Grams']):'—'}</td><td>{p.Notes||'—'}</td></tr>))}</tbody>
+        </table></div>}
+        {l.outstanding>.5 && <div style={{marginTop:12}}>
+          {!showPay
+            ? <button className="btn btn-primary btn-sm" onClick={()=>setShowPay(true)}>💰 Record Return / Installment</button>
+            : <div className="settle-box">
+                <div className="form-grid">
+                  <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
+                  <div className="form-group"><label>Returned As</label><select value={pay.mode} onChange={e=>setPay(p=>({...p,mode:e.target.value}))}><option>Cash</option><option>UPI</option><option>Gold</option><option>Silver</option></select></div>
+                  <div className="form-group"><label>Value (₹) — {fmtINR(l.outstanding)} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
+                  {(pay.mode==='Gold'||pay.mode==='Silver') && <div className="form-group"><label>Weight (g) — into {pay.mode==='Gold'?'Old Gold':'Old Silver'}</label><input type="number" step="0.001" value={pay.weight} onChange={e=>setPay(p=>({...p,weight:e.target.value}))}/></div>}
+                  <div className="form-group"><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
+                </div>
+                <div className="btn-row">
+                  <button className="btn btn-primary btn-sm" onClick={handlePay} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>setShowPay(false)}>Cancel</button>
+                </div>
+              </div>}
+        </div>}
+      </div>}
+    </div>
+  );
+}
+
+// ── ASK AI ───────────────────────────────────────────────────────────────────
+function NLPQuery({ data, derived }) {
+  const [messages, setMessages] = useState([{role:'ai',text:'Ask me anything about your jewel stock, transactions, balances or lending. 💎'}]);
+  const [input, setInput] = useState('');
+  const [loading, setLoad] = useState(false);
+  const endRef = useRef(null);
+
+  const suggestions = [
+    'What is my total gold reserve right now?',
+    'Show the balance of every reserve',
+    'How much cash do I have?',
+    'What lending is overdue and how much interest has built up?',
+    'What open reminders do I have?',
+    'Show recent conversions',
+  ];
+
+  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
+
+  const ask = async (q) => {
+    if (!q.trim()||loading) return;
+    setMessages(m=>[...m,{role:'user',text:q}]); setInput(''); setLoad(true);
+    try {
+      const answer = await askAI(q, data, derived);
+      setMessages(m=>[...m,{role:'ai',text:answer}]);
+    } catch(e) { setMessages(m=>[...m,{role:'ai',text:'Error: '+e.message}]); }
+    setLoad(false);
+  };
+
+  return (
+    <div>
+      <div className="section-row"><h3>Ask a Question</h3><span style={{fontSize:12,color:'var(--text-muted)'}}>Claude or Gemini — set key in Setup</span></div>
+      <div className="nlp-panel">
+        <div className="nlp-messages">
+          {messages.map((m,i)=>(
+            <div className="msg" key={i}>
+              <div className={`msg-avatar ${m.role}`}>{m.role==='user'?'You':'AI'}</div>
+              <div className={`msg-bubble ${m.role}`} style={{whiteSpace:'pre-wrap'}}>{m.text}</div>
+            </div>
+          ))}
+          {loading && <div className="msg"><div className="msg-avatar ai">AI</div><div className="msg-bubble" style={{color:'var(--text-muted)'}}>Thinking...</div></div>}
+          <div ref={endRef}/>
+        </div>
+        <div className="nlp-suggestions">{suggestions.map(s=><button key={s} className="nlp-chip" onClick={()=>ask(s)}>{s}</button>)}</div>
+        <div className="nlp-input-row">
+          <textarea className="nlp-input" placeholder="Ask anything about your jewel business..." value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input);}}}
+          />
+          <button className="btn btn-primary" onClick={()=>ask(input)} disabled={loading||!input.trim()}><Icon name="send" size={14}/></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PIN SCREEN ───────────────────────────────────────────────────────────────
+// If URL contains ?cfg=... load that encrypted blob into localStorage automatically
+(function() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const blob = params.get('cfg');
+    if (blob) {
+      localStorage.setItem(STORE_KEY, decodeURIComponent(blob));
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e) {}
+})();
+
+// ── GOOGLE SIGN-IN GATE (whitelisted accounts only, on top of the PIN) ────────
+function GoogleGate({ onDone }) {
+  const cfg = getConfig();
+  const btnRef = useRef();
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let tries = 0, cancelled = false;
+    const init = () => {
+      if (cancelled) return;
+      if (!(window.google && window.google.accounts && window.google.accounts.id)) {
+        if (tries++ < 60) return setTimeout(init, 100);
+        setErr('Google sign-in library failed to load — check your connection.');
+        return;
+      }
+      if (!cfg.clientId) { setErr('No Google Client ID set — add it in Setup.'); return; }
+      window.google.accounts.id.initialize({
+        client_id: cfg.clientId,
+        callback: async (resp) => {
+          setBusy(true); setErr('');
+          try { await gatewayLogin(resp.credential); onDone(); }
+          catch(e) { setErr(e.message || 'Sign-in failed'); setBusy(false); }
+        },
+      });
+      if (btnRef.current) window.google.accounts.id.renderButton(btnRef.current, { theme:'filled_blue', size:'large', width:280, text:'signin_with' });
+      window.google.accounts.id.prompt();
+    };
+    init();
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="pin-screen"><div className="pin-box">
+      <div className="pin-logo" style={{background:'var(--accent)'}}>🔐</div>
+      <div className="pin-title">Sign in with Google</div>
+      <div className="pin-sub">Only whitelisted Google accounts can open this app — this is in addition to your PIN.</div>
+      <div ref={btnRef} style={{display:'flex',justifyContent:'center',margin:'10px 0'}}/>
+      {busy && <div style={{fontSize:12,color:'var(--text-muted)'}}>Verifying account…</div>}
+      {err && <div className="pin-error">{err}</div>}
+      <span className="pin-toggle" style={{marginTop:14}} onClick={()=>{ setSession(null); localStorage.removeItem(STORE_KEY); window.location.reload(); }}>Reset app</span>
+    </div></div>
+  );
+}
+
+function PinScreen({ onUnlock }) {
+  const isFirstTime = !hasEncryptedConfig();
+  const [mode, setMode] = useState(isFirstTime ? 'setup' : 'unlock');
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [form, setForm] = useState({ jewelSheetId: '', rentSheetId: '', gatewayUrl: '', gatewaySecret: '', clientId: '', geminiKey: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [importCode, setImportCode] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const PIN_LEN = 4;
+
+  const handleKey = async (k) => {
+    if (loading) return;
+    setError('');
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+
+    if (mode === 'unlock') {
+      setLoading(true);
+      const cfg = await loadConfig(next);
+      if (cfg) {
+        setRuntimeConfig(cfg);
+        onUnlock();
+      } else {
+        setError('Wrong PIN — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+      setLoading(false);
+    } else if (mode === 'confirm') {
+      if (next === confirmPin) {
+        setLoading(true);
+        await persistConfig(next, form);
+        setRuntimeConfig(form);
+        setShowShare(true);
+        setLoading(false);
+      } else {
+        setError('PINs do not match — try again');
+        setTimeout(() => { setPin(''); setError(''); setLoading(false); }, 600);
+      }
+    }
+  };
+
+  const handleSetupNext = () => {
+    if (!form.jewelSheetId || !form.gatewayUrl || !form.gatewaySecret || !form.clientId) { setError('Jewel Sheet ID, Gateway URL, Secret and Google Client ID are required.'); return; }
+    setError('');
+    setMode('choose-pin');
+    setPin('');
+  };
+
+  const handleChoosePin = (k) => {
+    if (k === 'del') { setPin(p => p.slice(0, -1)); return; }
+    const next = pin + k;
+    setPin(next);
+    if (next.length < PIN_LEN) return;
+    setConfirmPin(next);
+    setPin('');
+    setMode('confirm');
+  };
+
+  const handleImport = () => {
+    const code = importCode.trim();
+    if (!code) { setError('Paste the share code first.'); return; }
+    try {
+      localStorage.setItem(STORE_KEY, code);
+      setMode('unlock');
+      setPin(''); setError(''); setShowImport(false);
+    } catch(e) { setError('Invalid code — ask the owner to share again.'); }
+  };
+
+  const copyShareLink = () => {
+    const blob = localStorage.getItem(STORE_KEY);
+    if (!blob) return;
+    const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+    navigator.clipboard.writeText(url).then(()=>alert('Share link copied!\n\nSend it to family. When they open it, the app auto-loads — they just need the PIN.'));
+  };
+
+  const keys = ['1','2','3','4','5','6','7','8','9','','0','del'];
+
+  if (showShare) return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo" style={{background:'var(--green)'}}>✓</div>
+        <div className="pin-title">Setup Complete!</div>
+        <div className="pin-sub">Share access with family by sending the share link. They open it, enter the PIN, and they're in.</div>
+        <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',marginBottom:10}} onClick={copyShareLink}>📋 Copy Share Link</button>
+        <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:16,lineHeight:1.6,padding:'8px',background:'rgba(0,0,0,.2)',borderRadius:6}}>
+          The link contains your encrypted config. Only the PIN can decrypt it — safe to share over WhatsApp.
+        </div>
+        <button className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}} onClick={()=>{ setRuntimeConfig(form); onUnlock(); }}>Enter App →</button>
+      </div>
+    </div>
+  );
+
+  if (mode === 'setup') return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo">💠</div>
+        <div className="pin-title">Money Manager — First-time Setup</div>
+        <div className="pin-sub">One app for Rent + Jewel + Investments. Deploy the Apps Script gateway first (see the ⓘ steps in Setup), then paste its URL, secret and your two Sheet IDs. Everything is PIN-encrypted — no Google login, no hourly timeout.</div>
+        <div className="pin-setup-form">
+          <div className="form-group"><label>Jewel Sheet ID <span style={{color:'var(--text-muted)',fontWeight:400}}>(reserves, stock, investments)</span></label><input placeholder="1BxiMVs0...jewel sheet id" value={form.jewelSheetId} onChange={e => setForm({...form, jewelSheetId: e.target.value})}/></div>
+          <div className="form-group"><label>Rent Sheet ID <span style={{color:'var(--text-muted)',fontWeight:400}}>(optional — properties, tenants)</span></label><input placeholder="1CxjNVs0...rent sheet id" value={form.rentSheetId} onChange={e => setForm({...form, rentSheetId: e.target.value})}/></div>
+          <div className="form-group"><label>Gateway Web-App URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(ends in /exec)</span></label><input placeholder="https://script.google.com/macros/s/…/exec" value={form.gatewayUrl} onChange={e => setForm({...form, gatewayUrl: e.target.value})}/></div>
+          <div className="form-group"><label>Gateway Secret</label><input type="password" placeholder="the SECRET you set in the script" value={form.gatewaySecret} onChange={e => setForm({...form, gatewaySecret: e.target.value})}/></div>
+          <div className="form-group"><label>Google Client ID <span style={{color:'var(--text-muted)',fontWeight:400}}>(for the sign-in gate)</span></label><input placeholder="123456789-abc.apps.googleusercontent.com" value={form.clientId} onChange={e => setForm({...form, clientId: e.target.value})}/></div>
+          <div className="form-group">
+            <label>AI API Key — <span style={{color:'var(--text-muted)',fontWeight:400}}>optional</span></label>
+            <input type="password" placeholder="sk-ant-... (Claude) or AIzaSy... (Gemini)" value={form.geminiKey} onChange={e => setForm({...form, geminiKey: e.target.value})}/>
+          </div>
+          {error && <div className="pin-error">{error}</div>}
+          <button className="btn btn-primary" style={{width:'100%',marginTop:8,justifyContent:'center'}} onClick={handleSetupNext}>Next — Choose PIN →</button>
+          <div style={{textAlign:'center',marginTop:12}}>
+            <span className="pin-toggle" onClick={()=>setShowImport(o=>!o)}>Already have a share code? Import it</span>
+          </div>
+          {showImport && <div style={{marginTop:10}}>
+            <div className="form-group"><label>Paste Share Code</label><textarea style={{background:'var(--navy)',border:'1px solid var(--border)',borderRadius:6,padding:'8px',color:'var(--text-primary)',fontSize:11,width:'100%',height:80,fontFamily:'monospace'}} value={importCode} onChange={e=>setImportCode(e.target.value)} placeholder="Paste the share code here..."/></div>
+            <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} onClick={handleImport}>Import & Enter PIN</button>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+
+  const modeLabel    = mode === 'choose-pin' ? 'Choose a 4-digit PIN' : mode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN';
+  const modeSubLabel = mode === 'choose-pin' ? 'Family members will use this PIN' : mode === 'confirm' ? 'Enter the same PIN again to confirm' : 'Keys are encrypted — PIN never leaves your device';
+
+  return (
+    <div className="pin-screen">
+      <div className="pin-box">
+        <div className="pin-logo">💎</div>
+        <div className="pin-title">{modeLabel}</div>
+        <div className="pin-sub">{modeSubLabel}</div>
+        <div className="pin-dots">
+          {Array.from({length: PIN_LEN}).map((_, i) => (
+            <div key={i} className={`pin-dot ${i < pin.length ? (error ? 'error' : 'filled') : ''}`}/>
+          ))}
+        </div>
+        <div className="pin-keypad">
+          {keys.map((k, i) => k === '' ? <div key={i}/> : (
+            <button key={i} className={`pin-key ${k === 'del' ? 'del' : ''}`}
+              onClick={() => mode === 'choose-pin' ? handleChoosePin(k) : handleKey(k)}
+              disabled={loading}
+            >{k === 'del' ? '⌫' : k}</button>
+          ))}
+        </div>
+        <div className="pin-error">{error}</div>
+        {mode === 'unlock' && (<>
+          <span className="pin-toggle" onClick={copyShareLink}>📋 Get share link (for new browser)</span>
+          <span className="pin-toggle" style={{marginTop:6}} onClick={() => { setMode('setup'); setPin(''); localStorage.removeItem(STORE_KEY); }}>
+            Reset &amp; re-enter keys
+          </span>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// ── SETUP PAGE ───────────────────────────────────────────────────────────────
+function Setup() {
+  const cfg = getConfig();
+  const [showChange, setShowChange] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [aiKey, setAiKey] = useState('');
+  const [aiMsg, setAiMsg] = useState('');
+
+  const handleChangePIN = async () => {
+    if (!oldPin || !newPin || !confirmPin) { setErr('Fill all fields.'); return; }
+    if (newPin !== confirmPin) { setErr('New PINs do not match.'); return; }
+    if (newPin.length < 4) { setErr('PIN must be 4 digits.'); return; }
+    const existing = await loadConfig(oldPin);
+    if (!existing) { setErr('Current PIN is incorrect.'); return; }
+    await persistConfig(newPin, existing);
+    setMsg('PIN changed successfully!'); setErr(''); setOldPin(''); setNewPin(''); setConfirmPin(''); setShowChange(false);
+  };
+
+  const saveAiKey = async () => {
+    if (!aiKey.trim()) { setAiMsg('Paste a key first.'); return; }
+    const newCfg = { ...cfg, geminiKey: aiKey.trim() };
+    const pin = window.prompt('Enter your PIN to save the new AI key:');
+    if (!pin) { setAiMsg('Cancelled.'); return; }
+    const check = await loadConfig(pin);
+    if (!check) { setAiMsg('Wrong PIN.'); return; }
+    setRuntimeConfig(newCfg);
+    await persistConfig(pin, newCfg);
+    setAiMsg('✓ AI key saved!');
+    setAiKey('');
+  };
+
+  return (
+    <div>
+      <div className="section-row"><h3>Setup</h3></div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.gatewayUrl?'done':''}`}>{cfg.gatewayUrl?<Icon name="check" size={14}/>:'1'}</div>
+        <div className="setup-text">
+          <h3>Apps Script gateway — no Google login, no billing</h3>
+          <p>This app talks only to a small Google Apps Script you deploy once. Your sheets stay <strong>private</strong> (un-shared), the money ledger becomes <strong>append-only</strong> (no manual delete/edit), and there is <strong>no OAuth token</strong>, so login never expires. <strong>No billing account is needed — Apps Script is free.</strong></p>
+          <ol style={{fontSize:12,color:'var(--text-secondary)',lineHeight:1.7,margin:'8px 0 0 16px'}}>
+            <li>Open your Jewel Sheet → <strong>Extensions → Apps Script</strong>.</li>
+            <li>Paste the <code>gateway.gs</code> code; set a long random <code>SECRET</code>.</li>
+            <li>Set <code>CLIENT_ID</code> (your Google OAuth Web client ID) and <code>WHITELIST</code> (the Gmail addresses allowed to sign in).</li>
+            <li><strong>Deploy → New deployment → Web app</strong>; Execute as <em>Me</em>, Who has access <em>Anyone</em>. Copy the <code>/exec</code> URL. (Authorize when asked — that's a normal consent, not billing.)</li>
+            <li>Paste the URL + SECRET + Client ID + both Sheet IDs during first-time setup.</li>
+            <li><strong>Un-share both sheets</strong> so only you (and the gateway) can touch them.</li>
+          </ol>
+          <div className="config-status">
+            <div className={`dot ${cfg.gatewayUrl ? 'dot-green' : 'dot-red'}`}/>
+            <span style={{fontSize:12,color:cfg.gatewayUrl?'var(--green)':'var(--red)'}}>{cfg.gatewayUrl ? 'Gateway configured' : 'Gateway not set'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.clientId?'done':''}`}>{cfg.clientId?<Icon name="check" size={14}/>:'2'}</div>
+        <div className="setup-text">
+          <h3>Two-factor access — Google account + PIN</h3>
+          <p>Everyone must sign in with a <strong>whitelisted Google account</strong> AND enter the <strong>PIN</strong>. Manage who has access by editing the <code>WHITELIST</code> array in <code>gateway.gs</code> (add/remove Gmail addresses, then redeploy). The signed-in session lasts 7 days, then one Google click renews it.</p>
+          <p style={{marginTop:6}}>One-time Google setup: in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style={{color:'var(--accent)'}}>Google Cloud Console → Credentials</a>, create an <strong>OAuth Client ID → Web application</strong>, add this site's URL under <em>Authorized JavaScript origins</em>, and use that Client ID here and in <code>gateway.gs</code>. No billing needed.</p>
+          <div className="config-status">
+            <div className={`dot ${cfg.clientId ? 'dot-green' : 'dot-red'}`}/>
+            <span style={{fontSize:12,color:cfg.clientId?'var(--green)':'var(--red)'}}>{cfg.clientId ? 'Google Client ID set' : 'Client ID not set'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num">2</div>
+        <div className="setup-text">
+          <h3>Share access with family</h3>
+          <p>Send the share link below — it carries your PIN-encrypted config (gateway URL, secret, sheet IDs). They open it, enter the PIN, and they're in. Nothing else to set up on their side; no Google sign-in.</p>
+          <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={()=>{
+            const blob = localStorage.getItem(STORE_KEY);
+            if (!blob) { alert('No config found — complete setup first.'); return; }
+            const url = `${window.location.origin}${window.location.pathname}?cfg=${encodeURIComponent(blob)}`;
+            navigator.clipboard.writeText(url).then(()=>alert('Share link copied!'));
+          }}>📋 Copy Share Link</button>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className={`setup-num ${cfg.geminiKey?'done':''}`}>{cfg.geminiKey?<Icon name="check" size={14}/>:'AI'}</div>
+        <div className="setup-text">
+          <h3>AI API Key {cfg.geminiKey ? <span style={{fontSize:12,color:'var(--green)',fontWeight:400}}>✓ Set</span> : <span style={{fontSize:12,color:'var(--gold)',fontWeight:400}}>Not set — Ask AI won't work</span>}</h3>
+          <p>Paste a Claude key (<code>sk-ant-...</code>) from <a href="https://console.anthropic.com" target="_blank" style={{color:'var(--accent)'}}>console.anthropic.com</a> or a Gemini key (<code>AIza...</code>) from <a href="https://aistudio.google.com/apikey" target="_blank" style={{color:'var(--accent)'}}>aistudio.google.com/apikey</a>.</p>
+          <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+            <div className="form-group" style={{flex:1,minWidth:200,marginBottom:0}}>
+              <input type="password" placeholder="sk-ant-... or AIzaSy..." value={aiKey} onChange={e=>setAiKey(e.target.value)}/>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={saveAiKey}>Save Key</button>
+            {aiMsg && <span style={{fontSize:12,color:aiMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{aiMsg}</span>}
+          </div>
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num">5</div>
+        <div className="setup-text">
+          <h3>Change PIN</h3>
+          <p>Change your shared PIN at any time.</p>
+          {!showChange
+            ? <button className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={() => setShowChange(true)}>Change PIN</button>
+            : <div style={{marginTop:12}}>
+                <div className="form-grid" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
+                  <div className="form-group"><label>Current PIN</label><input type="password" maxLength={4} placeholder="••••" value={oldPin} onChange={e => setOldPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>New PIN</label><input type="password" maxLength={4} placeholder="••••" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g,''))}/></div>
+                  <div className="form-group"><label>Confirm New PIN</label><input type="password" maxLength={4} placeholder="••••" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g,''))}/></div>
+                </div>
+                {err && <div style={{fontSize:12,color:'var(--red)',marginTop:6}}>{err}</div>}
+                {msg && <div style={{fontSize:12,color:'var(--green)',marginTop:6}}>{msg}</div>}
+                <div className="btn-row">
+                  <button className="btn btn-primary" onClick={handleChangePIN}>Save New PIN</button>
+                  <button className="btn btn-secondary" onClick={() => { setShowChange(false); setErr(''); }}>Cancel</button>
+                </div>
+              </div>
+          }
+        </div>
+      </div>
+
+      <div className="setup-step">
+        <div className="setup-num" style={{background:'var(--red-light)',color:'var(--red)'}}>!</div>
+        <div className="setup-text">
+          <h3>Clear Cache &amp; Reset PIN</h3>
+          <p>Clears your encrypted keys from this browser. <strong>Your Google Sheet data is NOT affected.</strong></p>
+          <button className="btn btn-danger btn-sm" style={{marginTop:10}} onClick={()=>{
+            if(window.confirm('Clear all cached keys and sign out? Your Sheet data is safe.')) {
+              localStorage.removeItem(STORE_KEY);
+              localStorage.removeItem(SESSION_KEY);
+              window.location.reload();
+            }
+          }}>Clear Cache &amp; Reset PIN</button>
+        </div>
+      </div>
+
+      <div style={{marginTop:16,padding:'14px 16px',background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.2)',borderRadius:8,fontSize:12,color:'var(--text-secondary)',lineHeight:1.7}}>
+        <strong style={{color:'var(--green)'}}>Your data is safe:</strong> Everything is stored in your own Google Sheet. Keys are AES-256 encrypted in localStorage. No server involved.
+      </div>
+    </div>
+  );
+}
+
+// ── ROOT APP ──────────────────────────────────────────────────────────────────
+function App() {
+  const [unlocked, setUnlocked] = useState(false);
+  const [gated, setGated] = useState(false);
+  const [page, setPage] = useState('dashboard');
+  const [editTxn, setEditTxn] = useState(null);
+  const [data, setData] = useState({ stock: [], reserves: [], banks: [], entries: [], lending: [], payments: [], reminders: [], investments: [], properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
+  const [loading, setLoading] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  const configReady = () => { const c = getConfig(); return !!(c.gatewayUrl && c.gatewaySecret && c.jewelSheetId && c.clientId); };
+
+  useEffect(() => {
+    if (!unlocked || !gated) return;
+    setAuthed(configReady());
+  }, [unlocked, gated]);
+
+  const loadData = useCallback(async () => {
+    if (!unlocked || !gated || !configReady()) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      await initSheets();
+      const [stock, reserves, banks, entries, lending, payments, reminders, investments,
+             properties, tenants, rent, maintenance, utilities] = await Promise.all([
+        readSheet('Stock'), readSheet('Reserves'), readSheet('Banks'), readSheet('Entries'),
+        readSheet('Lending'), readSheet('Payments'), readSheet('Reminders'), readSheet('Investments'),
+        readSheet('Properties'), readSheet('Tenants'), readSheet('Rent'), readSheet('Maintenance'), readSheet('Utilities'),
+      ]);
+      setData({ stock, reserves, banks, entries, lending, payments, reminders, investments, properties, tenants, rent, maintenance, utilities });
+      setAuthed(true);
+    } catch (e) {
+      if (e.needLogin) { setGated(false); setLoadError('Session expired — please sign in with Google again.'); }
+      else { console.error('loadData error:', e); setLoadError('Load error: ' + e.message); }
+    }
+    setLoading(false);
+  }, [unlocked, gated]);
+
+  useEffect(() => { if (unlocked && gated) loadData(); }, [loadData, unlocked, gated]);
+
+  const derived = useMemo(() => computeReserves(data), [data]);
+
+  const nav = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
+    { id: 'reserves', label: 'Reserves', icon: 'layers', section: 'Manage' },
+    { id: 'convert', label: 'New Transaction', icon: 'exchange', section: 'Manage' },
+    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Manage' },
+    { id: 'lending', label: 'Lending', icon: 'hand', section: 'Manage' },
+    { id: 'expenses', label: 'Expenses', icon: 'currency', section: 'Manage' },
+    { id: 'stock', label: 'Stock', icon: 'box', section: 'Manage' },
+    { id: 'reminders', label: 'Reminders', icon: 'bell', section: 'Tools' },
+    { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
+    { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
+  ];
+
+  const sections = [...new Set(nav.map(n => n.section))];
+  const titles = {
+    dashboard: ['Dashboard', 'Reserves, lending and reminders at a glance'],
+    reserves: ['Reserves', 'Balances, opening & per-reserve ledger'],
+    convert: ['New Transaction', 'Convert between reserves — sell, buy, exchange'],
+    transactions: ['Transactions', 'View and edit past transactions'],
+    lending: ['Lending', 'Cash or metal given to help — track returns & interest'],
+    expenses: ['Expenses', 'Money spent out of the Cash reserve'],
+    stock: ['Stock', 'Boxes & pockets — physical opening inventory'],
+    reminders: ['Reminders', 'Follow-ups to close'],
+    nlp: ['Ask AI', 'Natural language questions about your data'],
+    setup: ['Setup', 'Google Sheets, sharing and API keys'],
+  };
+  const [title, subtitle] = titles[page] || ['', ''];
+
+  const renderPage = () => {
+    if (!authed && page !== 'setup') {
+      return (
+        <div className="card" style={{maxWidth:480,margin:'40px auto',textAlign:'center',padding:'32px'}}>
+          <div style={{fontSize:32,marginBottom:16}}>💠</div>
+          <h2 style={{marginBottom:8,fontSize:16}}>Welcome to Money Manager</h2>
+          <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20,lineHeight:1.6}}>Deploy the Apps Script gateway and enter its details in Setup. Your rent, jewel and investment data stay in your own private Google Sheets.</p>
+          <button className="btn btn-primary" onClick={() => setPage('setup')}>Start Setup →</button>
+        </div>
+      );
+    }
+    switch (page) {
+      case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage} onRefresh={loadData}/>;
+      case 'reserves': return <ReservesPage data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}}/>;
+      case 'convert': return <Convert key={editTxn?editTxn.txnId:'new'} data={data} derived={derived} edit={editTxn} onRefresh={loadData} onDone={()=>{setEditTxn(null);setPage(editTxn?'transactions':'reserves');}}/>;
+      case 'transactions': return <Transactions data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}} onEdit={(g)=>{setEditTxn(g);setPage('convert');}}/>;
+      case 'lending': return <Lending data={data} derived={derived} onRefresh={loadData}/>;
+      case 'expenses': return <Expenses data={data} derived={derived} onRefresh={loadData}/>;
+      case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
+      case 'reminders': return <Reminders data={data} derived={derived} onRefresh={loadData}/>;
+      case 'nlp': return <NLPQuery data={data} derived={derived}/>;
+      case 'setup': return <Setup/>;
+      default: return null;
+    }
+  };
+
+  if (!unlocked) return <PinScreen onUnlock={() => { setUnlocked(true); setGated(sessionValid()); }} />;
+  if (!gated) return <GoogleGate onDone={() => setGated(true)} />;
+
+  return (
+    <>
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="logo-mark">💠</div>
+          <h1>Money Manager</h1>
+          <p>Rent · Jewel · Investments</p>
+        </div>
+        <nav className="sidebar-nav">
+          {sections.map(section => (
+            <div className="nav-section" key={section}>
+              <div className="nav-section-label">{section}</div>
+              {nav.filter(n => n.section === section).map(n => (
+                <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => { setEditTxn(null); setPage(n.id); }}>
+                  <Icon name={n.icon} size={16}/>
+                  <span>{n.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          {!authed && <div className="setup-badge" onClick={() => setPage('setup')}>⚙ Complete setup</div>}
+          {authed && loading && <div style={{fontSize:12,color:'var(--text-muted)',textAlign:'center'}}>Syncing...</div>}
+          {authed && !loading && <div style={{fontSize:11,color:'var(--text-muted)',textAlign:'center',cursor:'pointer'}} onClick={loadData}>● Live — click to refresh</div>}
+        </div>
+      </aside>
+      <main className="main">
+        <div className="topbar">
+          <div>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
+          </div>
+          {authed && page !== 'setup' && (
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {loading && <span style={{fontSize:12,color:'var(--text-muted)'}}>Loading...</span>}
+              <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
+                {loading ? <span className="spinner"/> : '↻'} Refresh
+              </button>
+            </div>
+          )}
+        </div>
+        {loadError && (
+          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 24px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span>⚠️ {loadError}</span>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+          </div>
+        )}
+        <div className="content">{renderPage()}</div>
+      </main>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
