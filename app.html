@@ -1505,16 +1505,16 @@ function Lending({ data, derived, onRefresh }) {
       </div>}
 
       {open.length===0 && closed.length===0 ? <div className="card"><div className="empty"><p>Nothing lent out yet.</p></div></div> : <>
-        {open.length>0 && <div className="gap-12" style={{marginBottom:16}}>{open.map(l=><LendCard key={l.ID} l={l} data={data} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>}
+        {open.length>0 && <div className="gap-12" style={{marginBottom:16}}>{open.map(l=><LendCard key={l.ID} l={l} data={data} derived={derived} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>}
         {closed.length>0 && <CollapsibleSection title={`✓ Closed / fully returned (${closed.length})`}>
-          <div className="gap-12">{closed.map(l=><LendCard key={l.ID} l={l} data={data} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>
+          <div className="gap-12">{closed.map(l=><LendCard key={l.ID} l={l} data={data} derived={derived} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>
         </CollapsibleSection>}
       </>}
     </div>
   );
 }
 
-function LendCard({ l, data, onRefresh, onEdit }) {
+function LendCard({ l, data, derived, onRefresh, onEdit }) {
   const [open, setOpen] = useState(false);
   const [showPay, setShowPay] = useState(false);
   const [saving, setSaving] = useState(false);
