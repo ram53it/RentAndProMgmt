@@ -58,6 +58,7 @@ function doPost(e) {
 
     switch (req.action) {
       case 'read':         return _json({ ok: true, values: _read(req.spreadsheetId, req.sheet) });
+      case 'readAll':      return _json({ ok: true, sheets: _readAll(req.spreadsheetId, req.sheets) });
       case 'append':       return _json({ ok: true, row: _append(req.spreadsheetId, req.sheet, req.values) });
       case 'update':       return _json({ ok: true, updated: _update(req.spreadsheetId, req.sheet, req.row, req.values) });
       case 'delete':       return _json({ ok: true, deleted: _delete(req.spreadsheetId, req.sheet, req.row, req.field, req.value) });
@@ -132,6 +133,20 @@ function _read(spreadsheetId, name) {
   var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
   if (lastRow === 0 || lastCol === 0) return [];
   return sh.getRange(1, 1, lastRow, lastCol).getValues();
+}
+
+// Read MANY tabs in one call (one spreadsheet open, one HTTP round-trip) —
+// much faster than one request per tab. Missing tabs come back as [].
+function _readAll(spreadsheetId, names) {
+  var ss = SpreadsheetApp.openById(spreadsheetId);
+  var out = {};
+  (names || []).forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) { out[name] = []; return; }
+    var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+    out[name] = (lastRow === 0 || lastCol === 0) ? [] : sh.getRange(1, 1, lastRow, lastCol).getValues();
+  });
+  return out;
 }
 
 // Append a row from a {header: value} object, ordered to the sheet's real header.

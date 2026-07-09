@@ -392,10 +392,10 @@ async function gatewayRequest(action, payload) {
   return data;
 }
 
-async function readSheet(sheetName) {
-  const data = await gatewayRequest('read', { spreadsheetId: spreadsheetIdFor(sheetName), sheet: sheetName });
-  const rows = data.values || [];
-  if (rows.length <= 1) return [];
+// Turn raw sheet values (header row + data rows) into row objects keyed by
+// canonical header name. Shared by readSheet and readAllSheets.
+function parseSheetRows(sheetName, rows) {
+  if (!rows || rows.length <= 1) return [];
   const canonicalHeaders = HEADERS[sheetName] || [];
   const actualHeaders = rows[0];
   const headerMap = actualHeaders.map(h => {
@@ -410,6 +410,33 @@ async function readSheet(sheetName) {
       return obj;
     })
     .filter(obj => canonicalHeaders.some(ch => obj[ch] !== ''));
+}
+
+async function readSheet(sheetName) {
+  const data = await gatewayRequest('read', { spreadsheetId: spreadsheetIdFor(sheetName), sheet: sheetName });
+  return parseSheetRows(sheetName, data.values || []);
+}
+
+// Read EVERY tab of one spreadsheet in a single gateway call (the gateway's
+// readAll action) — one round-trip instead of one per tab. Falls back to
+// per-tab reads if the deployed gateway is an older version without readAll.
+async function readAllSheets(dbKey) {
+  const cfg = getConfig();
+  const names = Object.keys(SHEET_DB).filter(s => SHEET_DB[s] === dbKey);
+  const spreadsheetId = dbKey === 'rent' ? cfg.rentSheetId : cfg.jewelSheetId;
+  try {
+    const data = await gatewayRequest('readAll', { spreadsheetId, sheets: names });
+    const out = {};
+    names.forEach(n => { out[n] = parseSheetRows(n, (data.sheets || {})[n] || []); });
+    return out;
+  } catch (e) {
+    if (e.needLogin || !/Unknown action/i.test(e.message||'')) throw e;
+    // Old gateway deployment — read tab by tab (slower; update gateway.gs to speed up).
+    const rows = await Promise.all(names.map(n => readSheet(n)));
+    const out = {};
+    names.forEach((n, i) => { out[n] = rows[i]; });
+    return out;
+  }
 }
 
 // Callers still pass a values ARRAY in HEADERS order; we zip it to a {name:value}
@@ -441,6 +468,14 @@ async function deleteTxn(txnId) {
   await gatewayRequest('delete', { spreadsheetId: spreadsheetIdFor('Entries'), sheet: 'Entries', field: 'Txn ID', value: txnId });
 }
 
+// ensureSchema + seeding only needs to run when the app's schema (or the sheet
+// IDs) change — not on every refresh. A signature in localStorage tracks that.
+const SCHEMA_SIG_KEY = 'cm_schema_sig';
+function schemaSig() {
+  const cfg = getConfig();
+  return JSON.stringify([HEADERS, RESERVES, cfg.jewelSheetId, cfg.rentSheetId]);
+}
+
 // Ensure every tab/column exists on both sheets, then seed missing reserve rows.
 async function initSheets() {
   const cfg = getConfig();
@@ -461,6 +496,15 @@ async function initSheets() {
 const fmtINR = (v) => '₹' + Number(v||0).toLocaleString('en-IN');
 const fmtG   = (v) => Number(v||0).toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' g';
 const todayStr = () => new Date().toISOString().slice(0,10);
+// Normalise a sheet date cell (plain 'YYYY-MM-DD' string OR a serialized Date
+// like '2026-07-08T18:30:00.000Z') to the LOCAL calendar day 'YYYY-MM-DD'.
+function dateKey(v) {
+  if (!v) return '';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return isNaN(d) ? s : new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
 const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
 
@@ -686,6 +730,7 @@ function Dashboard({ data, derived, onNav, onRefresh }) {
   const d = derived;
   const [closing, setClosing] = useState('');
   const openLends = d.lendOutstanding.filter(l => l.outstanding > 0.5).sort((a,b)=>(a['Due Date']||'').localeCompare(b['Due Date']||''));
+  const inv = investStats(data);
   const recentEntries = [...data.entries].sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||'')).slice(0,10);
 
   const closeReminder = async (r) => {
@@ -702,6 +747,7 @@ function Dashboard({ data, derived, onNav, onRefresh }) {
         <div className="stat-card"><div className="stat-label">🥇 Gold Reserve</div><div className="stat-value gold">{fmtG(d.goldTotal)}</div><div className="stat-sub">Ornaments + Metal + Old Gold</div></div>
         <div className="stat-card"><div className="stat-label">🥈 Silver Reserve</div><div className="stat-value silver">{fmtG(d.silverTotal)}</div><div className="stat-sub">Silver + Old Silver</div></div>
         <div className="stat-card"><div className="stat-label">🤝 Lending Out</div><div className="stat-value" style={{color:d.lendingDue>0?'var(--gold)':'var(--green)'}}>{fmtINR(d.lendingDue)}</div><div className="stat-sub">{openLends.length} open · incl. interest</div></div>
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>onNav('investments')}><div className="stat-label">📈 Invested</div><div className="stat-value gold">{fmtINR(inv.totalPrincipal)}</div><div className="stat-sub">{inv.active.length} active · {fmtINR(inv.monthlyIncome)}/mo income</div></div>
         <div className="stat-card"><div className="stat-label">🔔 Open Reminders</div><div className="stat-value" style={{color:d.openReminders.length>0?'var(--gold)':'var(--green)'}}>{d.openReminders.length}</div><div className="stat-sub">To follow up & close</div></div>
       </div>
 
@@ -737,6 +783,34 @@ function Dashboard({ data, derived, onNav, onRefresh }) {
               </div>);
             })}</div>}
           </div>
+          {(inv.upcoming.length>0 || inv.maturing.length>0) && <div className="card">
+            <div className="section-row" style={{marginBottom:12}}>
+              <div className="card-title" style={{marginBottom:0}}>📈 Investments — Upcoming</div>
+              <button className="btn btn-secondary btn-sm" onClick={()=>onNav('investments')}>View all →</button>
+            </div>
+            <div className="gap-12">
+              {inv.upcoming.slice(0,5).map(i => {
+                const nd = dateKey(i['Next Payment Date']);
+                const due = nd <= todayStr();
+                return (<div key={i.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--navy)',borderRadius:8,border:`1px solid ${due?'rgba(239,68,68,.3)':'var(--border)'}`}}>
+                  <div>
+                    <div style={{fontWeight:500,fontSize:13}}>{i.Name} <span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>{i.Vendor}</span></div>
+                    <div style={{fontSize:11,color:due?'var(--red)':'var(--text-muted)',marginTop:2}}>{due?'Due ':'Next payment '}{nd}</div>
+                  </div>
+                  <span className="mono" style={{color:'var(--green)',fontSize:13}}>{fmtINR(i['Next Payment Value']||i['Monthly Repayment'])}</span>
+                </div>);
+              })}
+              {inv.maturing.map(i => (
+                <div key={'m'+i.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--navy)',borderRadius:8,border:'1px solid rgba(212,175,55,.35)'}}>
+                  <div>
+                    <div style={{fontWeight:500,fontSize:13}}>⏳ {i.Name} <span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>{i.Vendor}</span></div>
+                    <div style={{fontSize:11,color:'var(--gold)',marginTop:2}}>Matures {dateKey(i['Maturity Date'])}</div>
+                  </div>
+                  <span className="mono" style={{color:'var(--gold)',fontSize:13}}>{fmtINR(i['Final Settlement']||i.Principal)}</span>
+                </div>
+              ))}
+            </div>
+          </div>}
           <div className="card">
             <div className="card-title">Open Lending</div>
             {openLends.length === 0 ? <div className="empty"><p>Nothing lent out ✓</p></div> :
@@ -903,11 +977,22 @@ function entryToLeg(e) {
   };
 }
 
+// Categories that belong to a linked record (lending, rent, …) — they are
+// managed from their own pages, so they're excluded from the free-type
+// suggestions and from direct editing on the Transactions page.
+const LINKED_CATS = ['Lending','Lending Return','Expense','Rent','Maintenance','Investment','Investment Return'];
+
 function Convert({ data, derived, onRefresh, onDone, edit }) {
   const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(edit ? edit.date : todayStr());
   const [counterparty, setCounterparty] = useState(edit ? edit.counterparty : '');
   const [notes, setNotes] = useState(edit ? edit.notes : '');
+  const [txnType, setTxnType] = useState(edit ? (edit.entries[0]?.Category || 'Convert') : 'Convert');
+  // Editable dropdown options: defaults + every type already used in the ledger.
+  const typeOpts = useMemo(() => {
+    const used = data.entries.map(e => (e.Category||'').trim()).filter(c => c && !LINKED_CATS.includes(c));
+    return [...new Set(['Convert','Sale','Purchase','Exchange', ...used])];
+  }, [data.entries]);
   const [remindDate, setRemindDate] = useState('');
   const [remindTitle, setRemindTitle] = useState('');
 
@@ -946,7 +1031,7 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
         await addEntry(txnId, date, {
           reserve: l.reserve, subtype: l.subtype, direction: l.direction, qty: legQty(l),
           weight: isCash(l.reserve)?'':l.weight, touch: isCash(l.reserve)?'':l.touch, margin: isCash(l.reserve)?'':l.margin,
-          value: legValue(l), counterparty, category: 'Convert', ref: '', notes,
+          value: legValue(l), counterparty, category: txnType.trim() || 'Convert', ref: '', notes,
         });
       }
       if (!edit && (remindDate || remindTitle.trim())) {
@@ -1005,6 +1090,10 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
         <div className="card-title">{edit ? '✏️ Edit Transaction' : 'Transaction Details'}</div>
         <div className="form-grid">
           <div className="form-group"><label>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+          <div className="form-group"><label>Type <span style={{color:'var(--text-muted)'}}>pick or type a new one</span></label>
+            <input list="txn-type-opts" placeholder="Convert" value={txnType} onChange={e=>setTxnType(e.target.value)}/>
+            <datalist id="txn-type-opts">{typeOpts.map(t=><option key={t} value={t}/>)}</datalist>
+          </div>
           <div className="form-group"><label>Counterparty <span style={{color:'var(--text-muted)'}}>customer / person</span></label><input placeholder="Name (optional)" value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></div>
           <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input placeholder="What is this transaction" value={notes} onChange={e=>setNotes(e.target.value)}/></div>
         </div>
@@ -1051,25 +1140,51 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
 
 // ── TRANSACTIONS — entries grouped by Txn ID, view & edit ────────────────────
 function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
-  const [filter, setFilter] = useState('all');
+  const [typeF, setTypeF] = useState('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [q, setQ] = useState('');
   const [openTxn, setOpenTxn] = useState(null);
   const [busy, setBusy] = useState('');
 
-  // Group entry rows by Txn ID
+  // Group entry rows by Txn ID — rent collections, lending, returns/interest,
+  // expenses and conversions ALL post Entries, so they all show up here.
   const groups = {};
   data.entries.forEach(e => { const k = e['Txn ID'] || e.ID; (groups[k] = groups[k] || []).push(e); });
   const list = Object.entries(groups).map(([txnId, legs]) => {
     const first = legs[0];
-    const cats = [...new Set(legs.map(l => l.Category).filter(Boolean))];
-    const editable = legs.every(l => (l.Category || 'Convert') === 'Convert');
+    const cats = [...new Set(legs.map(l => (l.Category||'').trim()).filter(Boolean))];
+    // Linked categories (rent/lending/…) are edited on their own pages; every
+    // other type — including user-defined ones — is editable here.
+    const editable = !cats.some(c => LINKED_CATS.includes(c));
+    let inV = 0, outV = 0;
+    legs.forEach(l => { const v = num(l.Value) || (isCash(l.Reserve) ? num(l.Qty) : 0); if (l.Direction==='In') inV += v; else outV += v; });
     return {
-      txnId, legs, date: first.Date, counterparty: first.Counterparty || '', notes: first.Notes || '',
-      cats, editable, entryRows: legs.map(l => l._row),
-      kind: cats.includes('Lending') || cats.includes('Lending Return') ? 'Lending' : cats.includes('Expense') ? 'Expense' : 'Convert',
+      txnId, legs, date: dateKey(first.Date), counterparty: first.Counterparty || '', notes: first.Notes || '',
+      cats, kind: cats[0] || 'Convert', editable, inV, outV, entryRows: legs.map(l => l._row),
     };
   }).sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.txnId||'').localeCompare(a.txnId||''));
 
-  const shown = list.filter(g => filter==='all' ? true : g.kind===filter);
+  // Filter: type (dynamic — every category ever used) + date range + free text.
+  const allTypes = [...new Set(list.flatMap(g => g.cats))].sort();
+  const ql = q.trim().toLowerCase();
+  const shown = list.filter(g =>
+    (typeF==='all' || g.cats.includes(typeF)) &&
+    (!from || g.date >= from) && (!to || g.date <= to) &&
+    (!ql || [g.counterparty, g.notes, g.txnId, g.kind, ...g.legs.map(l => `${l.Reserve} ${l.Subtype||''} ${l.Notes||''} ${l.Counterparty||''}`)]
+      .join(' ').toLowerCase().includes(ql))
+  );
+  const totals = shown.reduce((t,g) => ({ in: t.in+g.inV, out: t.out+g.outV }), { in:0, out:0 });
+
+  const ymd = (dt) => new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const preset = (p) => {
+    const now = new Date();
+    if (p==='all') { setFrom(''); setTo(''); return; }
+    if (p==='month') { setFrom(ymd(new Date(now.getFullYear(), now.getMonth(), 1))); setTo(ymd(now)); return; }
+    if (p==='lastMonth') { setFrom(ymd(new Date(now.getFullYear(), now.getMonth()-1, 1))); setTo(ymd(new Date(now.getFullYear(), now.getMonth(), 0))); return; }
+    if (p==='30') { setFrom(ymd(new Date(now.getTime()-30*86400000))); setTo(ymd(now)); return; }
+    if (p==='year') { setFrom(ymd(new Date(now.getFullYear(), 0, 1))); setTo(ymd(now)); return; }
+  };
 
   const doDelete = async (g) => {
     if (!window.confirm(`Delete this transaction (${g.legs.length} legs)? Reserve balances will adjust. This permanently removes the rows.`)) return;
@@ -1079,28 +1194,47 @@ function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
     setBusy('');
   };
 
-  const kindBadge = { Convert:'badge-blue', Lending:'badge-gold', Expense:'badge-red' };
+  const kindBadge = (k) => ({ Convert:'badge-blue', Lending:'badge-gold', 'Lending Return':'badge-gold', Rent:'badge-green', Expense:'badge-red', Maintenance:'badge-red', Investment:'badge-gold', 'Investment Return':'badge-green' }[k] || 'badge-blue');
 
   return (
     <div>
-      <div className="section-row">
-        <div className="tabs" style={{marginBottom:0}}>
-          <button className={`tab ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All ({list.length})</button>
-          <button className={`tab ${filter==='Convert'?'active':''}`} onClick={()=>setFilter('Convert')}>Conversions</button>
-          <button className={`tab ${filter==='Lending'?'active':''}`} onClick={()=>setFilter('Lending')}>Lending</button>
-          <button className={`tab ${filter==='Expense'?'active':''}`} onClick={()=>setFilter('Expense')}>Expenses</button>
+      <div className="card" style={{marginBottom:14}}>
+        <div className="section-row" style={{marginBottom:10}}>
+          <div className="card-title" style={{marginBottom:0}}>🔎 Filter</div>
+          <button className="btn btn-primary btn-sm" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
         </div>
-        <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+        <div className="form-grid">
+          <div className="form-group"><label>Type</label>
+            <select value={typeF} onChange={e=>setTypeF(e.target.value)}>
+              <option value="all">All types</option>
+              {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="form-group"><label>From date</label><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></div>
+          <div className="form-group"><label>To date</label><input type="date" value={to} onChange={e=>setTo(e.target.value)}/></div>
+          <div className="form-group"><label>Search</label><input placeholder="person, note, reserve, id…" value={q} onChange={e=>setQ(e.target.value)}/></div>
+        </div>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10,alignItems:'center'}}>
+          {[['month','This month'],['lastMonth','Last month'],['30','Last 30 days'],['year','This year'],['all','All time']].map(([p,label]) =>
+            <button key={p} className="btn btn-secondary btn-sm" onClick={()=>preset(p)}>{label}</button>)}
+          {(typeF!=='all'||from||to||ql) && <button className="btn btn-secondary btn-sm" onClick={()=>{setTypeF('all');setFrom('');setTo('');setQ('');}}>✕ Clear filters</button>}
+        </div>
+        <div style={{marginTop:12,fontSize:13,display:'flex',gap:18,flexWrap:'wrap',borderTop:'1px solid var(--border)',paddingTop:10}}>
+          <span><b>{shown.length}</b> of {list.length} transactions</span>
+          <span style={{color:'var(--green)'}}>↓ In {fmtINR(totals.in)}</span>
+          <span style={{color:'var(--red)'}}>↑ Out {fmtINR(totals.out)}</span>
+          <span style={{color:'var(--text-muted)'}}>Net {fmtINR(Math.round((totals.in-totals.out)*100)/100)}</span>
+        </div>
       </div>
 
-      {shown.length===0 ? <div className="card"><div className="empty"><p>No transactions here yet.</p></div></div> :
+      {shown.length===0 ? <div className="card"><div className="empty"><p>No transactions match this filter.</p></div></div> :
       <div className="gap-12">{shown.map(g => {
         const isOpen = openTxn===g.txnId;
         return (
         <div className="card" key={g.txnId} style={{padding:0,overflow:'hidden'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenTxn(o=>o===g.txnId?null:g.txnId)}>
             <div>
-              <div style={{fontWeight:600,fontSize:14}}>{g.counterparty || (g.kind==='Expense'?'Expense':'Transaction')} <span className={`badge ${kindBadge[g.kind]}`} style={{marginLeft:6}}>{g.kind}</span></div>
+              <div style={{fontWeight:600,fontSize:14}}>{g.counterparty || (g.kind==='Expense'?'Expense':'Transaction')} <span className={`badge ${kindBadge(g.kind)}`} style={{marginLeft:6}}>{g.kind}</span></div>
               <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{g.date} · {g.legs.length} leg{g.legs.length>1?'s':''}{g.notes?` · ${g.notes}`:''}</div>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -1671,6 +1805,247 @@ function LendCard({ l, data, derived, onRefresh, onEdit }) {
                 <div className="btn-row">
                   <button className="btn btn-primary btn-sm" onClick={editingPay ? handleUpdatePay : handlePay} disabled={saving}>{saving?<span className="spinner"/>:editingPay?'Update':'Save'}</button>
                   <button className="btn btn-secondary btn-sm" onClick={()=>{setShowPay(false); setEditingPay(null); setPay({ date: todayStr(), mode:'Cash', reserve:'Cash', amount:'', weight:'', notes:'' });}}>Cancel</button>
+                </div>
+              </div>}
+        </div>}
+      </div>}
+    </div>
+  );
+}
+
+// ── INVESTMENTS — bonds / FD / RD, funded from a reserve, repayments credited back
+const INVEST_TYPES = ['FD','RD','Bond','Other'];
+
+// Add n months to a YYYY-MM-DD string, clamping month overflow (Jan 31 → Feb 28).
+function addMonths(dateStr, n) {
+  if (!dateStr) return '';
+  const [y,m,d] = String(dateStr).split('-').map(Number);
+  const dt = new Date(y, m-1+n, d);
+  if (dt.getDate() !== d) dt.setDate(0);
+  const p = (x) => String(x).padStart(2,'0');
+  return `${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}`;
+}
+
+// Shared by the Investments page and the Dashboard highlights.
+function investStats(data) {
+  const all = data.investments || [];
+  const active = all.filter(i => (i.Status||'Active') !== 'Closed');
+  const totalPrincipal = active.reduce((s,i) => s+num(i.Principal), 0);
+  const monthlyIncome = active.filter(i => i['Repayment Type']==='Monthly').reduce((s,i) => s+num(i['Monthly Repayment']), 0);
+  const upcoming = active.filter(i => i['Next Payment Date'])
+    .sort((a,b) => dateKey(a['Next Payment Date']).localeCompare(dateKey(b['Next Payment Date'])));
+  const in60 = addMonths(todayStr(), 2);
+  const maturing = active.filter(i => i['Maturity Date'] && dateKey(i['Maturity Date']) <= in60)
+    .sort((a,b) => dateKey(a['Maturity Date']).localeCompare(dateKey(b['Maturity Date'])));
+  return { all, active, totalPrincipal, monthlyIncome, upcoming, maturing };
+}
+
+function Investments({ data, derived, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
+  const blank = { name:'', type:'FD', vendor:'', reserve: cashNames[0]||'Cash', principal:'', rate:'', start: todayStr(), maturity:'', repayType:'At Maturity', monthly:'', nextDate:'', nextValue:'', final:'', notes:'' };
+  const [form, setForm] = useState(blank);
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+  const vendors = [...new Set(['Stable Money','Wint Wealth', ...data.investments.map(i=>(i.Vendor||'').trim()).filter(Boolean)])];
+  const st = investStats(data);
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { alert('Give the investment a name.'); return; }
+    if (num(form.principal) <= 0) { alert('Enter the principal amount.'); return; }
+    setSaving(true);
+    try {
+      const rowObj = (id, status) => rowValues('Investments', {
+        ID:id, Name:form.name.trim(), Type:form.type, Vendor:form.vendor.trim(), Reserve:form.reserve,
+        Principal:num(form.principal), 'Rate %':num(form.rate), 'Start Date':form.start, 'Maturity Date':form.maturity,
+        'Repayment Type':form.repayType, 'Monthly Repayment': form.repayType==='Monthly'?num(form.monthly):'',
+        'Next Payment Date':form.nextDate, 'Next Payment Value':num(form.nextValue)||'',
+        'Final Settlement':num(form.final)||'', Status:status, Notes:form.notes,
+      });
+      if (editing) {
+        await updateRow('Investments', editing._row, rowObj(editing.ID, editing.Status||'Active'));
+        // Keep the funding ledger entry in step with the edited record.
+        const entry = data.entries.find(e => e['Txn ID']===editing.ID && e.Category==='Investment');
+        if (entry) await updateRow('Entries', entry._row, rowValues('Entries', {
+          ID:entry.ID, 'Txn ID':editing.ID, Date:form.start, Reserve:form.reserve, Subtype:'', Direction:'Out',
+          Qty:num(form.principal), 'Weight Grams':'', Touch:'', Margin:'', Value:num(form.principal),
+          Counterparty:form.vendor.trim(), Category:'Investment', Ref:editing.ID, Notes:`Invested in ${form.name.trim()}`,
+        }));
+        setEditing(null);
+      } else {
+        const bal = derived.balOf(form.reserve);
+        if (num(form.principal) > bal + 0.5) { alert(`"${form.reserve}" has only ${fmtINR(bal)} — cannot invest ${fmtINR(num(form.principal))}.`); setSaving(false); return; }
+        const id = uid('IV');
+        await appendRow('Investments', rowObj(id, 'Active'));
+        await addEntry(id, form.start, { reserve:form.reserve, direction:'Out', qty:num(form.principal), value:num(form.principal),
+          counterparty:form.vendor.trim(), category:'Investment', ref:id, notes:`Invested in ${form.name.trim()}` });
+      }
+      setForm(blank); setShowForm(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const openEdit = (i) => {
+    setForm({ name:i.Name||'', type:i.Type||'FD', vendor:i.Vendor||'', reserve:i.Reserve||'Cash', principal:i.Principal||'',
+      rate:i['Rate %']||'', start:dateKey(i['Start Date'])||todayStr(), maturity:dateKey(i['Maturity Date'])||'',
+      repayType:i['Repayment Type']||'At Maturity', monthly:i['Monthly Repayment']||'', nextDate:dateKey(i['Next Payment Date'])||'',
+      nextValue:i['Next Payment Value']||'', final:i['Final Settlement']||'', notes:i.Notes||'' });
+    setEditing(i); setShowForm(true);
+  };
+
+  const list = [...data.investments].sort((a,b) => dateKey(b['Start Date']).localeCompare(dateKey(a['Start Date'])));
+  const activeList = list.filter(i => (i.Status||'Active') !== 'Closed');
+  const closedList = list.filter(i => (i.Status||'Active') === 'Closed');
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-label">📈 Invested (active)</div><div className="stat-value gold">{fmtINR(st.totalPrincipal)}</div><div className="stat-sub">{st.active.length} active investment{st.active.length!==1?'s':''}</div></div>
+        <div className="stat-card"><div className="stat-label">💰 Monthly repayment income</div><div className="stat-value green">{fmtINR(st.monthlyIncome)}</div><div className="stat-sub">from monthly-repayment plans</div></div>
+        <div className="stat-card"><div className="stat-label">📅 Next payment</div>
+          <div className="stat-value" style={{fontSize:18}}>{st.upcoming[0] ? `${dateKey(st.upcoming[0]['Next Payment Date'])}` : '—'}</div>
+          <div className="stat-sub">{st.upcoming[0] ? `${st.upcoming[0].Name} · ${fmtINR(st.upcoming[0]['Next Payment Value']||st.upcoming[0]['Monthly Repayment'])}` : 'nothing scheduled'}</div></div>
+        <div className="stat-card"><div className="stat-label">⏳ Maturing in 60 days</div><div className="stat-value" style={{color:st.maturing.length>0?'var(--gold)':'var(--green)'}}>{st.maturing.length}</div><div className="stat-sub">{st.maturing[0]?`${st.maturing[0].Name} on ${dateKey(st.maturing[0]['Maturity Date'])}`:'none'}</div></div>
+      </div>
+
+      <div className="section-row">
+        <h3>Investments</h3>
+        <button className="btn btn-primary" onClick={()=>{setForm(blank);setEditing(null);setShowForm(o=>!o);}}><Icon name="plus" size={14}/> New Investment</button>
+      </div>
+
+      {showForm && <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">{editing ? '✏️ Edit Investment' : 'New Investment'}</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Name *</label><input placeholder="e.g. HDFC FD 2yr" value={form.name} onChange={e=>f('name',e.target.value)}/></div>
+          <div className="form-group"><label>Type</label><select value={form.type} onChange={e=>f('type',e.target.value)}>{INVEST_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
+          <div className="form-group"><label>Vendor</label>
+            <input list="invest-vendors" placeholder="Stable Money / bank…" value={form.vendor} onChange={e=>f('vendor',e.target.value)}/>
+            <datalist id="invest-vendors">{vendors.map(v=><option key={v} value={v}/>)}</datalist>
+          </div>
+          <div className="form-group"><label>Funded From <span style={{color:'var(--text-muted)'}}>{fmtINR(derived.balOf(form.reserve))} avail</span></label>
+            <select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{cashNames.map(n=><option key={n} value={n}>{n}</option>)}</select>
+          </div>
+          <div className="form-group"><label>Principal (₹) *</label><input type="number" value={form.principal} onChange={e=>f('principal',e.target.value)}/></div>
+          <div className="form-group"><label>Rate % (yearly)</label><input type="number" step="0.01" value={form.rate} onChange={e=>f('rate',e.target.value)}/></div>
+          <div className="form-group"><label>Start Date</label><input type="date" value={form.start} onChange={e=>f('start',e.target.value)}/></div>
+          <div className="form-group"><label>Maturity Date</label><input type="date" value={form.maturity} onChange={e=>f('maturity',e.target.value)}/></div>
+          <div className="form-group"><label>Repayment</label><select value={form.repayType} onChange={e=>f('repayType',e.target.value)}><option>At Maturity</option><option>Monthly</option></select></div>
+          {form.repayType==='Monthly' && <div className="form-group"><label>Monthly Repayment (₹)</label><input type="number" value={form.monthly} onChange={e=>f('monthly',e.target.value)}/></div>}
+          <div className="form-group"><label>Next Payment Date</label><input type="date" value={form.nextDate} onChange={e=>f('nextDate',e.target.value)}/></div>
+          <div className="form-group"><label>Next Payment Value (₹)</label><input type="number" placeholder={form.repayType==='Monthly'?form.monthly:''} value={form.nextValue} onChange={e=>f('nextValue',e.target.value)}/></div>
+          <div className="form-group"><label>Final Settlement (₹) <span style={{color:'var(--text-muted)'}}>expected at maturity</span></label><input type="number" value={form.final} onChange={e=>f('final',e.target.value)}/></div>
+          <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:editing?'Update':'Save & Invest'}</button>
+          <button className="btn btn-secondary" onClick={()=>{setShowForm(false);setEditing(null);}}>Cancel</button>
+        </div>
+        {!editing && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:8}}>Saving posts an Out entry from "{form.reserve}" for the principal — your reserve balance goes down by {fmtINR(num(form.principal))}.</div>}
+      </div>}
+
+      {activeList.length===0 && closedList.length===0 ? <div className="card"><div className="empty"><p>No investments yet. Add your first bond, FD or RD.</p></div></div> : <>
+        {activeList.length>0 && <div className="gap-12" style={{marginBottom:16}}>{activeList.map(i=><InvestCard key={i.ID} inv={i} data={data} derived={derived} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>}
+        {closedList.length>0 && <CollapsibleSection title={`✓ Closed / matured (${closedList.length})`}>
+          <div className="gap-12">{closedList.map(i=><InvestCard key={i.ID} inv={i} data={data} derived={derived} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>
+        </CollapsibleSection>}
+      </>}
+    </div>
+  );
+}
+
+function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
+  const [open, setOpen] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pay, setPay] = useState({ date: todayStr(), reserve:'Cash', amount:'', isFinal:false, notes:'' });
+  const payments = data.payments.filter(p => p['Ref Type']==='Investment' && p['Ref ID']===inv.ID);
+  const received = payments.reduce((s,p)=>s+num(p.Amount),0);
+  const closed = (inv.Status||'Active')==='Closed';
+  const nextDate = dateKey(inv['Next Payment Date']);
+  const nextDue = !closed && nextDate && nextDate <= todayStr();
+  const cashNames = derived.reserves.filter(r=>r.kind==='Cash').map(r=>r.name);
+
+  const openPay = () => {
+    setPay({ date: todayStr(), reserve: inv.Reserve && cashNames.includes(inv.Reserve) ? inv.Reserve : (cashNames[0]||'Cash'),
+      amount: inv['Next Payment Value'] || inv['Monthly Repayment'] || '', isFinal:false, notes:'' });
+    setShowPay(true);
+  };
+
+  const handlePay = async () => {
+    const amt = num(pay.amount);
+    if (amt<=0) { alert('Enter the amount received.'); return; }
+    setSaving(true);
+    try {
+      const payId = uid('P');
+      await appendRow('Payments', rowValues('Payments', { ID:payId, Date:pay.date, 'Ref Type':'Investment', 'Ref ID':inv.ID, Person:inv.Vendor||inv.Name, Mode:'Bank', Amount:amt, 'Weight Grams':'', Notes:pay.notes }));
+      await addEntry(inv.ID, pay.date, { reserve:pay.reserve, direction:'In', qty:amt, value:amt,
+        counterparty:inv.Vendor||inv.Name, category:'Investment Return', ref:payId, notes:`${pay.isFinal?'Final settlement':'Repayment'} — ${inv.Name}` });
+      // Advance the schedule, or close out on final settlement.
+      const upd = { ...inv };
+      if (pay.isFinal) { upd.Status = 'Closed'; upd['Next Payment Date'] = ''; upd['Next Payment Value'] = ''; }
+      else if ((inv['Repayment Type']||'')==='Monthly' && nextDate) { upd['Next Payment Date'] = addMonths(nextDate, 1); }
+      await updateRow('Investments', inv._row, rowValues('Investments', upd));
+      setShowPay(false); onRefresh();
+    } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpen(o=>!o)}>
+        <div>
+          <div style={{fontWeight:600,fontSize:14}}>{inv.Name} <span className="badge badge-blue" style={{marginLeft:6}}>{inv.Type}</span>{inv.Vendor && <span style={{fontWeight:400,fontSize:12,color:'var(--text-muted)',marginLeft:8}}>{inv.Vendor}</span>}</div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>
+            {dateKey(inv['Start Date'])} · {fmtINR(inv.Principal)}{num(inv['Rate %'])>0?` @ ${inv['Rate %']}%`:''}
+            {inv['Maturity Date'] && <> · matures {dateKey(inv['Maturity Date'])}</>}
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          {nextDue && <span className="badge badge-red">Payment due</span>}
+          {!closed && nextDate && !nextDue && <span className="badge badge-gold">Next {nextDate}{num(inv['Next Payment Value'])>0?` · ${fmtINR(inv['Next Payment Value'])}`:''}</span>}
+          <span className={`badge ${closed?'badge-green':'badge-blue'}`}>{closed?'Closed ✓':'Active'}</span>
+          <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation(); onEdit(inv);}} title="Edit Investment">✏️</button>
+          <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:open?'rotate(90deg)':'none'}}>›</span>
+        </div>
+      </div>
+
+      {open && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+        {inv.Notes && <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:10}}>📝 {inv.Notes}</div>}
+        <div style={{display:'flex',gap:18,flexWrap:'wrap',marginBottom:12,fontSize:12,color:'var(--text-secondary)'}}>
+          <span>Principal: <b className="mono">{fmtINR(inv.Principal)}</b></span>
+          <span>Received so far: <b className="mono" style={{color:'var(--green)'}}>{fmtINR(received)}</b></span>
+          <span>Repayment: <b>{inv['Repayment Type']||'—'}{(inv['Repayment Type']||'')==='Monthly' && num(inv['Monthly Repayment'])>0?` · ${fmtINR(inv['Monthly Repayment'])}/mo`:''}</b></span>
+          {num(inv['Final Settlement'])>0 && <span>Final settlement: <b className="mono">{fmtINR(inv['Final Settlement'])}</b></span>}
+          <span>Funded from: <b>{inv.Reserve||'—'}</b></span>
+        </div>
+        {payments.length>0 && <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Amount</th><th>Notes</th></tr></thead>
+          <tbody>{payments.map(p=>(
+            <tr key={p.ID}><td className="mono">{dateKey(p.Date)}</td><td className="mono">{fmtINR(p.Amount)}</td><td>{p.Notes||'—'}</td></tr>
+          ))}</tbody>
+        </table></div>}
+        {!closed && <div style={{marginTop:12}}>
+          {!showPay
+            ? <button className="btn btn-primary btn-sm" onClick={openPay}>💰 Record Repayment / Maturity</button>
+            : <div className="settle-box">
+                <div className="form-grid">
+                  <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
+                  <div className="form-group"><label>Received Into</label>
+                    <select value={pay.reserve} onChange={e=>setPay(p=>({...p,reserve:e.target.value}))}>{cashNames.map(n=><option key={n} value={n}>{n}</option>)}</select>
+                  </div>
+                  <div className="form-group"><label>Amount (₹)</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
+                  <div className="form-group"><label>Final settlement?</label>
+                    <select value={pay.isFinal?'yes':'no'} onChange={e=>setPay(p=>({...p,isFinal:e.target.value==='yes'}))}>
+                      <option value="no">No — regular repayment</option>
+                      <option value="yes">Yes — close this investment</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
+                </div>
+                <div className="btn-row">
+                  <button className="btn btn-primary btn-sm" onClick={handlePay} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>setShowPay(false)}>Cancel</button>
                 </div>
               </div>}
         </div>}
@@ -3350,14 +3725,20 @@ function App() {
     setLoading(true);
     setLoadError('');
     try {
-      await initSheets();
-      const [stock, reserves, banks, entries, lending, payments, reminders, investments,
-             properties, tenants, rent, maintenance, utilities] = await Promise.all([
-        readSheet('Stock'), readSheet('Reserves'), readSheet('Banks'), readSheet('Entries'),
-        readSheet('Lending'), readSheet('Payments'), readSheet('Reminders'), readSheet('Investments'),
-        readSheet('Properties'), readSheet('Tenants'), readSheet('Rent'), readSheet('Maintenance'), readSheet('Utilities'),
-      ]);
-      setData({ stock, reserves, banks, entries, lending, payments, reminders, investments, properties, tenants, rent, maintenance, utilities });
+      // Schema migration + reserve seeding only when the schema or sheet IDs changed.
+      const sig = schemaSig();
+      if (localStorage.getItem(SCHEMA_SIG_KEY) !== sig) {
+        await initSheets();
+        localStorage.setItem(SCHEMA_SIG_KEY, sig);
+      }
+      // Two batched calls (one per spreadsheet) instead of one call per tab.
+      const cfg = getConfig();
+      const [j, r] = await Promise.all([readAllSheets('jewel'), cfg.rentSheetId ? readAllSheets('rent') : {}]);
+      setData({
+        stock: j.Stock||[], reserves: j.Reserves||[], banks: j.Banks||[], entries: j.Entries||[],
+        lending: j.Lending||[], payments: j.Payments||[], reminders: j.Reminders||[], investments: j.Investments||[],
+        properties: r.Properties||[], tenants: r.Tenants||[], rent: r.Rent||[], maintenance: r.Maintenance||[], utilities: r.Utilities||[],
+      });
       setAuthed(true);
     } catch (e) {
       if (e.needLogin) { setGated(false); setLoadError('Session expired — please sign in with Google again.'); }
@@ -3383,6 +3764,7 @@ function App() {
     { id: 'rent', label: 'Rent', icon: 'currency', section: 'Rent' },
     { id: 'maintenance', label: 'Maintenance', icon: 'tool', section: 'Rent' },
     { id: 'utilities', label: 'Utilities', icon: 'zap', section: 'Rent' },
+    { id: 'investments', label: 'Investments', icon: 'layers', section: 'Invest' },
     { id: 'reminders', label: 'Reminders', icon: 'bell', section: 'Tools' },
     { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
     { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
@@ -3402,6 +3784,7 @@ function App() {
     rent: ['Rent', 'Monthly rent — collect into a Cash/Bank reserve'],
     maintenance: ['Maintenance', 'Property expenses paid from a reserve'],
     utilities: ['Utilities', 'Electricity, tax & water numbers'],
+    investments: ['Investments', 'Bonds, FD & RD — funded from a reserve, repayments credited back'],
     reminders: ['Reminders', 'Follow-ups to close'],
     nlp: ['Ask AI', 'Natural language questions about your data'],
     setup: ['Setup', 'Gateway, sign-in and API keys'],
@@ -3432,6 +3815,7 @@ function App() {
       case 'rent': return <Rent data={data} derived={derived} onRefresh={loadData} initialPropId={rentTarget} onClearTarget={()=>setRentTarget(null)}/>;
       case 'maintenance': return <Maintenance data={data} derived={derived} onRefresh={loadData}/>;
       case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
+      case 'investments': return <Investments data={data} derived={derived} onRefresh={loadData}/>;
       case 'reminders': return <Reminders data={data} derived={derived} onRefresh={loadData}/>;
       case 'nlp': return <NLPQuery data={data} derived={derived}/>;
       case 'setup': return <Setup/>;
