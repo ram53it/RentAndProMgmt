@@ -9,25 +9,27 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --navy: #14110a;
-      --navy-mid: #1c1810;
-      --navy-light: #2a2417;
-      --navy-border: #3d3420;
-      --accent: #d4a017;
-      --accent-hover: #b8890f;
-      --accent-light: rgba(212,160,23,0.12);
-      --gold: #f59e0b;
+      /* Calm slate-blue theme with a soft teal accent — easy on the eyes.
+         --gold / --silver stay as SEMANTIC colors for metal amounts only. */
+      --navy: #0e1524;
+      --navy-mid: #141d31;
+      --navy-light: #1d2941;
+      --navy-border: #263552;
+      --accent: #2fbfa8;
+      --accent-hover: #23a390;
+      --accent-light: rgba(47,191,168,0.13);
+      --gold: #e8b34d;
       --silver: #9ca3af;
-      --green: #10b981;
-      --green-light: rgba(16,185,129,0.12);
-      --red: #ef4444;
-      --red-light: rgba(239,68,68,0.10);
-      --text-primary: #f5f1e8;
-      --text-secondary: #b3a98f;
-      --text-muted: #7d7460;
-      --surface: #1c1810;
-      --surface-2: #2a2417;
-      --border: #3d3420;
+      --green: #34d399;
+      --green-light: rgba(52,211,153,0.12);
+      --red: #f87171;
+      --red-light: rgba(248,113,113,0.10);
+      --text-primary: #e9eef7;
+      --text-secondary: #9fb0c9;
+      --text-muted: #64748b;
+      --surface: #141d31;
+      --surface-2: #1d2941;
+      --border: #263552;
       --radius: 8px;
       --radius-lg: 12px;
       --mono: 'JetBrains Mono', monospace;
@@ -58,6 +60,62 @@
     .topbar h2 { font-size: 16px; font-weight: 600; }
     .topbar p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
     .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+    /* App shell — top nav (desktop) + bottom tab bar (mobile) */
+    .app-shell { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 100vh; }
+    .topnav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 14px; padding: 10px 20px; background: var(--navy-mid); border-bottom: 1px solid var(--border); }
+    .topnav .logo-mark { width: 30px; height: 30px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .topnav-title { font-size: 14px; font-weight: 600; white-space: nowrap; }
+    .topnav-tabs { display: flex; gap: 4px; flex: 1; justify-content: center; }
+    .topnav-tab { display: flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border: none; background: none; font-family: inherit; transition: all .15s; }
+    .topnav-tab:hover { background: var(--surface-2); color: var(--text-primary); }
+    .topnav-tab.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+    .topnav-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .subnav { display: flex; gap: 6px; padding: 10px 20px 0; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; }
+    .subnav::-webkit-scrollbar { display: none; }
+    .subnav-pill { white-space: nowrap; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; color: var(--text-secondary); cursor: pointer; font-family: inherit; transition: all .15s; }
+    .subnav-pill:hover { color: var(--text-primary); border-color: var(--text-muted); }
+    .subnav-pill.active { background: var(--accent-light); border-color: rgba(47,191,168,.4); color: var(--accent); font-weight: 600; }
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 18px; }
+    .page-head h2 { font-size: 17px; font-weight: 600; }
+    .page-head p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .bottombar { display: none; }
+    @media (max-width: 860px) {
+      .topnav-tabs { display: none; }
+      .topnav-title span.sub { display: none; }
+      .content { padding: 16px 14px 96px; }
+      .subnav { padding: 10px 14px 0; }
+      .bottombar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 60; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--navy-mid); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+      .bottombar button { background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: var(--text-muted); padding: 4px 2px; cursor: pointer; font-family: inherit; }
+      .bottombar button.active { color: var(--accent); }
+      .bottombar .bb-emoji { font-size: 20px; line-height: 1.1; }
+    }
+
+    /* Home (insights) */
+    .hero-card { background: linear-gradient(135deg, #14283c 0%, var(--surface) 55%, #10202e 100%); border: 1px solid var(--border); border-radius: 16px; padding: 22px; margin-bottom: 16px; }
+    .hero-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; }
+    .hero-total { font-family: var(--mono); font-size: 34px; font-weight: 600; color: var(--green); margin-top: 4px; }
+    .hero-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .hero-chip { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+    .hero-chip b { color: var(--text-primary); font-family: var(--mono); font-weight: 500; margin-left: 4px; }
+    .qa-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .qa-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; font-family: inherit; transition: all .15s; }
+    .qa-btn:hover { border-color: var(--accent); color: var(--text-primary); transform: translateY(-2px); }
+    .qa-btn .qa-emoji { font-size: 20px; }
+    .flow-wrap { display: flex; gap: 10px; align-items: flex-end; height: 150px; padding-top: 8px; }
+    .flow-month { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; min-width: 0; }
+    .flow-bars { display: flex; gap: 4px; align-items: flex-end; height: 100%; width: 100%; justify-content: center; }
+    .flow-bar { width: 14px; border-radius: 4px 4px 0 0; min-height: 2px; }
+    .flow-label { font-size: 10px; color: var(--text-muted); }
+    .bar-line { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 8px; }
+    .bar-line .bar-name { width: 110px; flex-shrink: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { flex: 1; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; }
+    .bar-line .bar-amt { font-family: var(--mono); font-size: 11px; color: var(--text-primary); width: 78px; text-align: right; flex-shrink: 0; }
+    .att-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--navy); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; font-size: 12.5px; }
+    .att-item:hover { border-color: var(--text-muted); }
+    .att-item.red { border-color: rgba(239,68,68,.35); }
+    .att-item.gold { border-color: rgba(245,158,11,.3); }
 
     /* Cards */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
@@ -116,7 +174,7 @@
 
     /* Buttons */
     .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; font-family: inherit; }
-    .btn-primary { background: var(--accent); color: #14110a; }
+    .btn-primary { background: var(--accent); color: #0b1220; }
     .btn-primary:hover { background: var(--accent-hover); }
     .btn-primary:disabled { opacity: .6; cursor: default; }
     .btn-secondary { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
@@ -133,7 +191,7 @@
     .msg-avatar.user { background: var(--accent-light); color: var(--accent); }
     .msg-avatar.ai { background: rgba(16,185,129,.15); color: var(--green); }
     .msg-bubble { background: var(--surface-2); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.6; color: var(--text-primary); max-width: 600px; }
-    .msg-bubble.user { background: var(--accent-light); border: 1px solid rgba(212,160,23,.2); }
+    .msg-bubble.user { background: var(--accent-light); border: 1px solid rgba(47,191,168,.25); }
     .nlp-input-row { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
     .nlp-input { flex: 1; background: var(--navy); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; color: var(--text-primary); font-family: inherit; resize: none; height: 42px; }
     .nlp-input:focus { outline: none; border-color: var(--accent); }
@@ -406,7 +464,14 @@ function parseSheetRows(sheetName, rows) {
   return rows.slice(1)
     .map((row, i) => {
       const obj = { _row: i + 2 };
-      headerMap.forEach((h, j) => { if (h) obj[h] = (row[j] !== undefined ? row[j] : ''); });
+      headerMap.forEach((h, j) => {
+        if (!h) return;
+        let v = row[j] !== undefined ? row[j] : '';
+        // Google Sheets returns date cells as Date objects, which arrive as UTC
+        // ISO strings ('2026-07-07T18:30:00.000Z'). Show the LOCAL calendar day.
+        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) v = dateKey(v);
+        obj[h] = v;
+      });
       return obj;
     })
     .filter(obj => canonicalHeaders.some(ch => obj[ch] !== ''));
@@ -726,6 +791,187 @@ function CollapsibleSection({ title, defaultOpen=false, children }) {
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
+// ── HOME — insights landing page ──────────────────────────────────────────────
+function InsightsHome({ data, derived, onNav }) {
+  const d = derived;
+  const today = todayStr();
+  const inv = investStats(data);
+  const liquid = num(d.cashBal) + num(d.bankTotal);
+
+  // Last 6 months of ₹ cash flow (all Cash/bank reserve entries)
+  const months = [];
+  { const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`, label: dt.toLocaleString('en-US',{month:'short'}), in: 0, out: 0 });
+    } }
+  data.entries.forEach(e => {
+    if (!isCash(e.Reserve)) return;
+    const m = months.find(x => (e.Date||'').startsWith(x.key));
+    if (!m) return;
+    const v = num(e.Qty) || num(e.Value);
+    if (e.Direction === 'In') m.in += v; else m.out += v;
+  });
+  const maxFlow = Math.max(1, ...months.map(m => Math.max(m.in, m.out)));
+  const thisM = months[5];
+
+  // This month's ₹ flows by category
+  const catIn = {}, catOut = {};
+  data.entries.forEach(e => {
+    if (!isCash(e.Reserve) || !(e.Date||'').startsWith(thisM.key)) return;
+    const v = num(e.Qty) || num(e.Value);
+    if (v <= 0) return;
+    const c = (e.Category||'Other').trim() || 'Other';
+    if (e.Direction === 'In') catIn[c] = (catIn[c]||0) + v; else catOut[c] = (catOut[c]||0) + v;
+  });
+  const topCats = (o) => { const es = Object.entries(o).sort((a,b)=>b[1]-a[1]); const max = es[0]?.[1]||1; return es.slice(0,4).map(([n,v])=>({n,v,pct:Math.max(4, v/max*100)})); };
+  const incomeCats = topCats(catIn), expenseCats = topCats(catOut);
+
+  // Rent radar — who has paid this month
+  const now = new Date();
+  const monthName = now.toLocaleString('en-US',{month:'long'});
+  const yearStr = String(now.getFullYear());
+  const activeTenants = data.tenants.filter(t => (t.Status||'Active') === 'Active');
+  const rentRows = data.rent.filter(r => r.Month === monthName && String(r.Year) === yearStr);
+  const rentStatus = activeTenants.map(t => {
+    const prop = data.properties.find(p => p.ID === t['Property ID']);
+    const row = rentRows.find(r => r['Tenant ID'] === t.ID);
+    const paid = !!row && (row.Status === 'Paid' || row.Status === 'Partial');
+    return { t, prop, paid, partial: row?.Status === 'Partial', amount: num(row?.Amount || prop?.['Rent Amount']) };
+  });
+  const rentCollected = rentStatus.filter(x => x.paid).reduce((s,x) => s + x.amount, 0);
+  const rentPending = rentStatus.filter(x => !x.paid);
+
+  // Needs attention — everything that wants an action, most urgent first
+  const attention = [];
+  d.lendOutstanding.filter(l => l.outstanding > .5 && l['Due Date'] && dateKey(l['Due Date']) < today)
+    .forEach(l => attention.push({ icon:'🤝', level:'red', nav:'lending', text:`${l.Person} — ${fmtINR(l.outstanding)} overdue since ${dateKey(l['Due Date'])}` }));
+  inv.upcoming.filter(i => dateKey(i['Next Payment Date']) <= today)
+    .forEach(i => attention.push({ icon:'📈', level:'red', nav:'investments', text:`${i.Name} — payment ${fmtINR(i['Next Payment Value']||i['Monthly Repayment'])} due ${dateKey(i['Next Payment Date'])}` }));
+  inv.maturing.forEach(i => attention.push({ icon:'⏳', level:'gold', nav:'investments', text:`${i.Name} matures ${dateKey(i['Maturity Date'])} — expect ${fmtINR(i['Final Settlement']||i.Principal)}` }));
+  rentPending.forEach(x => attention.push({ icon:'🏢', level:'gold', nav:'rent', text:`Rent pending — ${x.t.Name}${x.prop?` (${x.prop.Name})`:''} · ${fmtINR(x.amount)}` }));
+  d.openReminders.forEach(r => attention.push({ icon:'🔔', nav:'reminders', level: r['Due Date'] && dateKey(r['Due Date']) < today ? 'red' : 'gold', text:`${r.Title}${r['Due Date']?` — due ${dateKey(r['Due Date'])}`:''}` }));
+  attention.sort((a,b) => (a.level==='red'?0:1) - (b.level==='red'?0:1));
+
+  const quick = [
+    ['💱','New Transaction','convert'], ['🏢','Record Rent','rent'], ['🧾','Add Expense','expenses'],
+    ['🤝','Lend / Collect','lending'], ['📈','Investments','investments'], ['🤖','Ask AI','nlp'],
+  ];
+
+  return (
+    <div>
+      <div className="hero-card">
+        <div className="hero-label">💠 Liquid money — cash + banks</div>
+        <div className="hero-total">{fmtINR(liquid)}</div>
+        <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>
+          {thisM.label}: <span style={{color:'var(--green)'}}>↓ {fmtINR(thisM.in)} in</span> · <span style={{color:'var(--red)'}}>↑ {fmtINR(thisM.out)} out</span> · net <b style={{color: thisM.in-thisM.out>=0?'var(--green)':'var(--red)'}}>{fmtINR(thisM.in-thisM.out)}</b>
+        </div>
+        <div className="hero-chips">
+          <span className="hero-chip" onClick={()=>onNav('reserves')}>💵 Cash<b>{fmtINR(d.cashBal)}</b></span>
+          <span className="hero-chip" onClick={()=>onNav('reserves')}>🏦 Banks<b>{fmtINR(d.bankTotal)}</b></span>
+          <span className="hero-chip" onClick={()=>onNav('reserves')}>🥇 Gold<b>{fmtG(d.goldTotal)}</b></span>
+          <span className="hero-chip" onClick={()=>onNav('reserves')}>🥈 Silver<b>{fmtG(d.silverTotal)}</b></span>
+          <span className="hero-chip" onClick={()=>onNav('investments')}>📈 Invested<b>{fmtINR(inv.totalPrincipal)}</b></span>
+          <span className="hero-chip" onClick={()=>onNav('lending')}>🤝 Lent out<b>{fmtINR(d.lendingDue)}</b></span>
+        </div>
+      </div>
+
+      <div className="qa-row">
+        {quick.map(([emoji,label,page]) => (
+          <button key={page} className="qa-btn" onClick={()=>onNav(page)}><span className="qa-emoji">{emoji}</span>{label}</button>
+        ))}
+      </div>
+
+      <div className="two-col">
+        <div>
+          <div className="card">
+            <div className="card-title">💸 Cash Flow — last 6 months</div>
+            <div className="flow-wrap">
+              {months.map(m => (
+                <div className="flow-month" key={m.key} title={`${m.label}: in ${fmtINR(m.in)} · out ${fmtINR(m.out)}`}>
+                  <div className="flow-bars">
+                    <div className="flow-bar" style={{height:`${m.in/maxFlow*100}%`, background:'var(--green)'}}/>
+                    <div className="flow-bar" style={{height:`${m.out/maxFlow*100}%`, background:'var(--red)'}}/>
+                  </div>
+                  <div className="flow-label">{m.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:14,fontSize:11,color:'var(--text-muted)',marginTop:8}}>
+              <span><span style={{display:'inline-block',width:9,height:9,background:'var(--green)',borderRadius:2,marginRight:5}}/>Money in</span>
+              <span><span style={{display:'inline-block',width:9,height:9,background:'var(--red)',borderRadius:2,marginRight:5}}/>Money out</span>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-title">📊 This Month by Type</div>
+            {incomeCats.length===0 && expenseCats.length===0 ? <div className="empty"><p>No money movement yet this month.</p></div> : <>
+              {incomeCats.length>0 && <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:'var(--green)',marginBottom:8,fontWeight:600}}>↓ INCOME</div>
+                {incomeCats.map(c => (
+                  <div className="bar-line" key={'i'+c.n}>
+                    <span className="bar-name">{c.n}</span>
+                    <div className="bar-track"><div className="bar-fill" style={{width:`${c.pct}%`,background:'var(--green)'}}/></div>
+                    <span className="bar-amt">{fmtINR(c.v)}</span>
+                  </div>
+                ))}
+              </div>}
+              {expenseCats.length>0 && <div>
+                <div style={{fontSize:11,color:'var(--red)',marginBottom:8,fontWeight:600}}>↑ SPENT</div>
+                {expenseCats.map(c => (
+                  <div className="bar-line" key={'o'+c.n}>
+                    <span className="bar-name">{c.n}</span>
+                    <div className="bar-track"><div className="bar-fill" style={{width:`${c.pct}%`,background:'var(--red)'}}/></div>
+                    <span className="bar-amt">{fmtINR(c.v)}</span>
+                  </div>
+                ))}
+              </div>}
+            </>}
+          </div>
+        </div>
+
+        <div>
+          <div className="card">
+            <div className="section-row" style={{marginBottom:12}}>
+              <div className="card-title" style={{marginBottom:0}}>🏢 Rent Radar — {monthName}</div>
+              <button className="btn btn-secondary btn-sm" onClick={()=>onNav('rent')}>Open Rent →</button>
+            </div>
+            {rentStatus.length===0 ? <div className="empty"><p>No active tenants.</p></div> : <>
+              <div style={{display:'flex',gap:16,marginBottom:12,fontSize:12}}>
+                <span style={{color:'var(--green)'}}>✓ Collected {fmtINR(rentCollected)}</span>
+                <span style={{color: rentPending.length?'var(--gold)':'var(--green)'}}>{rentPending.length ? `⏳ ${rentPending.length} pending` : 'All collected ✓'}</span>
+              </div>
+              <div className="gap-12">
+                {rentStatus.map(x => (
+                  <div key={x.t.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'8px 12px',background:'var(--navy)',borderRadius:8,border:'1px solid var(--border)',fontSize:12.5}}>
+                    <span>{x.paid ? '✅' : '⏳'} {x.t.Name} <span style={{color:'var(--text-muted)'}}>{x.prop?.Name}</span></span>
+                    <span className="mono" style={{color: x.paid?'var(--green)':'var(--gold)'}}>{fmtINR(x.amount)}{x.partial?' (partial)':''}</span>
+                  </div>
+                ))}
+              </div>
+            </>}
+          </div>
+
+          <div className="card">
+            <div className="card-title">🚨 Needs Attention</div>
+            {attention.length===0 ? <div className="empty"><p>All clear — nothing pending 🎉</p></div> :
+            <div className="gap-12">
+              {attention.slice(0,8).map((a,i) => (
+                <div key={i} className={`att-item ${a.level}`} onClick={()=>onNav(a.nav)}>
+                  <span style={{fontSize:16}}>{a.icon}</span>
+                  <span style={{flex:1}}>{a.text}</span>
+                  <span style={{color:'var(--text-muted)'}}>›</span>
+                </div>
+              ))}
+              {attention.length>8 && <div style={{fontSize:11,color:'var(--text-muted)',textAlign:'center'}}>+{attention.length-8} more…</div>}
+            </div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ data, derived, onNav, onRefresh }) {
   const d = derived;
   const [closing, setClosing] = useState('');
@@ -3705,7 +3951,7 @@ function Setup() {
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [gated, setGated] = useState(false);
-  const [page, setPage] = useState('dashboard');
+  const [page, setPage] = useState('home');
   const [editTxn, setEditTxn] = useState(null);
   const [rentTarget, setRentTarget] = useState(null);
   const [data, setData] = useState({ stock: [], reserves: [], banks: [], entries: [], lending: [], payments: [], reminders: [], investments: [], properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
@@ -3751,28 +3997,22 @@ function App() {
 
   const derived = useMemo(() => computeReserves(data), [data]);
 
-  const nav = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'Overview' },
-    { id: 'reserves', label: 'Reserves', icon: 'layers', section: 'Jewel' },
-    { id: 'convert', label: 'New Transaction', icon: 'exchange', section: 'Jewel' },
-    { id: 'transactions', label: 'Transactions', icon: 'list', section: 'Jewel' },
-    { id: 'lending', label: 'Lending', icon: 'hand', section: 'Jewel' },
-    { id: 'expenses', label: 'Expenses', icon: 'currency', section: 'Jewel' },
-    { id: 'stock', label: 'Stock', icon: 'box', section: 'Jewel' },
-    { id: 'properties', label: 'Properties', icon: 'home', section: 'Rent' },
-    { id: 'tenants', label: 'Tenants', icon: 'users', section: 'Rent' },
-    { id: 'rent', label: 'Rent', icon: 'currency', section: 'Rent' },
-    { id: 'maintenance', label: 'Maintenance', icon: 'tool', section: 'Rent' },
-    { id: 'utilities', label: 'Utilities', icon: 'zap', section: 'Rent' },
-    { id: 'investments', label: 'Investments', icon: 'layers', section: 'Invest' },
-    { id: 'reminders', label: 'Reminders', icon: 'bell', section: 'Tools' },
-    { id: 'nlp', label: 'Ask AI', icon: 'chat', section: 'Tools' },
-    { id: 'setup', label: 'Setup', icon: 'settings', section: 'Config' },
+  // Grouped navigation: top tabs on desktop, bottom tab bar on mobile,
+  // per-group pill row for the pages inside the active group.
+  const GROUPS = [
+    { id:'homeG',  label:'Home',   emoji:'🏠', pages:[['home','🏠 Home'],['dashboard','⚡ Quick View']] },
+    { id:'jewelG', label:'Jewel',  emoji:'💎', pages:[['reserves','Reserves'],['convert','New Txn'],['transactions','Transactions'],['lending','Lending'],['expenses','Expenses'],['stock','Stock']] },
+    { id:'rentG',  label:'Rent',   emoji:'🏢', pages:[['rent','Rent'],['properties','Properties'],['tenants','Tenants'],['maintenance','Maintenance'],['utilities','Utilities']] },
+    { id:'investG',label:'Invest', emoji:'📈', pages:[['investments','Investments']] },
+    { id:'moreG',  label:'More',   emoji:'⚙️', pages:[['reminders','Reminders'],['nlp','Ask AI'],['setup','Setup']] },
   ];
+  const activeGroup = GROUPS.find(g => g.pages.some(p => p[0] === page)) || GROUPS[0];
+  const goGroup = (g) => { setEditTxn(null); setPage(g.pages[0][0]); };
+  const goPage = (id) => { setEditTxn(null); setPage(id); };
 
-  const sections = [...new Set(nav.map(n => n.section))];
   const titles = {
-    dashboard: ['Dashboard', 'Reserves, rent and reminders at a glance'],
+    home: ['Home', 'Insights across rent, jewel & investments'],
+    dashboard: ['Quick View', 'Reserves, rent and reminders at a glance'],
     reserves: ['Reserves', 'Balances, opening & per-reserve ledger'],
     convert: ['New Transaction', 'Convert between reserves — sell, buy, exchange'],
     transactions: ['Transactions', 'View and edit past transactions'],
@@ -3803,6 +4043,7 @@ function App() {
       );
     }
     switch (page) {
+      case 'home': return <InsightsHome data={data} derived={derived} onNav={goPage}/>;
       case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage} onRefresh={loadData}/>;
       case 'reserves': return <ReservesPage data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}}/>;
       case 'convert': return <Convert key={editTxn?editTxn.txnId:'new'} data={data} derived={derived} edit={editTxn} onRefresh={loadData} onDone={()=>{setEditTxn(null);setPage(editTxn?'transactions':'reserves');}}/>;
@@ -3827,56 +4068,63 @@ function App() {
   if (!gated) return <GoogleGate onDone={() => setGated(true)} />;
 
   return (
-    <>
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <div className="logo-mark">💠</div>
-          <h1>Money Manager</h1>
-          <p>Rent · Jewel · Investments</p>
-        </div>
-        <nav className="sidebar-nav">
-          {sections.map(section => (
-            <div className="nav-section" key={section}>
-              <div className="nav-section-label">{section}</div>
-              {nav.filter(n => n.section === section).map(n => (
-                <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} onClick={() => { setEditTxn(null); setPage(n.id); }}>
-                  <Icon name={n.icon} size={16}/>
-                  <span>{n.label}</span>
-                </button>
-              ))}
-            </div>
+    <div className="app-shell">
+      <header className="topnav">
+        <div className="logo-mark">💠</div>
+        <div className="topnav-title">Money Manager</div>
+        <nav className="topnav-tabs">
+          {GROUPS.map(g => (
+            <button key={g.id} className={`topnav-tab ${activeGroup.id===g.id?'active':''}`} onClick={()=>goGroup(g)}>
+              <span>{g.emoji}</span><span>{g.label}</span>
+            </button>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          {!authed && <div className="setup-badge" onClick={() => setPage('setup')}>⚙ Complete setup</div>}
-          {authed && loading && <div style={{fontSize:12,color:'var(--text-muted)',textAlign:'center'}}>Syncing...</div>}
-          {authed && !loading && <div style={{fontSize:11,color:'var(--text-muted)',textAlign:'center',cursor:'pointer'}} onClick={loadData}>● Live — click to refresh</div>}
-        </div>
-      </aside>
-      <main className="main">
-        <div className="topbar">
-          <div>
-            <h2>{title}</h2>
-            <p>{subtitle}</p>
-          </div>
-          {authed && page !== 'setup' && (
-            <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              {loading && <span style={{fontSize:12,color:'var(--text-muted)'}}>Loading...</span>}
-              <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
-                {loading ? <span className="spinner"/> : '↻'} Refresh
-              </button>
-            </div>
+        <div className="topnav-right">
+          {!authed && <div className="setup-badge" onClick={() => setPage('setup')}>⚙ Setup</div>}
+          {authed && (
+            <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading} title="Refresh data">
+              {loading ? <span className="spinner"/> : '↻'}
+            </button>
           )}
         </div>
-        {loadError && (
-          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 24px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span>⚠️ {loadError}</span>
-            <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+      </header>
+
+      {activeGroup.pages.length > 1 && (
+        <div className="subnav">
+          {activeGroup.pages.map(([id, label]) => (
+            <button key={id} className={`subnav-pill ${page===id?'active':''}`} onClick={()=>goPage(id)}>{label}</button>
+          ))}
+        </div>
+      )}
+
+      {loadError && (
+        <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 20px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span>⚠️ {loadError}</span>
+          <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+        </div>
+      )}
+
+      <div className="content">
+        {page !== 'home' && (
+          <div className="page-head">
+            <div>
+              <h2>{title}</h2>
+              <p>{subtitle}</p>
+            </div>
           </div>
         )}
-        <div className="content">{renderPage()}</div>
-      </main>
-    </>
+        {renderPage()}
+      </div>
+
+      <nav className="bottombar">
+        {GROUPS.map(g => (
+          <button key={g.id} className={activeGroup.id===g.id?'active':''} onClick={()=>goGroup(g)}>
+            <span className="bb-emoji">{g.emoji}</span>
+            <span>{g.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
   );
 }
 
