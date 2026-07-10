@@ -373,7 +373,8 @@ const HEADERS = {
   Lending:     ['ID','Date','Person','Phone','Type','Reserve','Weight Grams','Amount','Interest %','Interest Type','Due Date','Status','Notes'],
   Payments:    ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
   Reminders:   ['ID','Created','Due Date','Title','Linked Type','Linked ID','Status','Notes'],
-  Investments: ['ID','Name','Type','Vendor','Reserve','Principal','Rate %','Start Date','Maturity Date','Repayment Type','Monthly Repayment','Next Payment Date','Next Payment Value','Final Settlement','Status','Notes'],
+  Investments: ['ID','Name','Type','Vendor','Reserve','Principal','Rate %','Start Date','Maturity Date','Repayment Type','Monthly Repayment','Next Payment Date','Next Payment Value','Final Settlement','Status','Notes','Repayment Mode'],
+  InvestSchedule: ['ID','Investment ID','Due Date','Amount','Status','Received Date','Reserve','Notes'],
   // Rent sheet tabs
   Properties:  ['ID','Name','Address','Type','Rent Amount','Occupancy','Notes','Created'],
   Tenants:     ['ID','Property ID','Name','Phone','Email','Advance','Move In Date','Status','Notes','Last Rent Revision'],
@@ -384,7 +385,7 @@ const HEADERS = {
 // Which physical spreadsheet each tab lives in.
 const SHEET_DB = {
   Stock:'jewel', Reserves:'jewel', Banks:'jewel', Entries:'jewel', Lending:'jewel',
-  Payments:'jewel', Reminders:'jewel', Investments:'jewel',
+  Payments:'jewel', Reminders:'jewel', Investments:'jewel', InvestSchedule:'jewel',
   Properties:'rent', Tenants:'rent', Rent:'rent', Maintenance:'rent', Utilities:'rent',
 };
 const spreadsheetIdFor = (sheetName) => {
@@ -526,6 +527,11 @@ async function updateRow(sheetName, rowNum, values) {
 // Build the values array for a row object in header order.
 function rowValues(sheetName, obj) {
   return HEADERS[sheetName].map(h => obj[h] !== undefined ? obj[h] : '');
+}
+
+// Delete a single sheet row by its 1-based row number.
+async function deleteRow(sheetName, rowNum) {
+  await gatewayRequest('delete', { spreadsheetId: spreadsheetIdFor(sheetName), sheet: sheetName, row: rowNum });
 }
 
 // Delete every ledger row belonging to a transaction (all legs share a Txn ID).
@@ -2098,7 +2104,7 @@ function Investments({ data, derived, onRefresh }) {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
   const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
-  const blank = { name:'', type:'FD', vendor:'', reserve: cashNames[0]||'Cash', principal:'', rate:'', start: todayStr(), maturity:'', repayType:'At Maturity', monthly:'', nextDate:'', nextValue:'', final:'', notes:'' };
+  const blank = { name:'', type:'FD', vendor:'', reserve: cashNames[0]||'Cash', principal:'', rate:'', start: todayStr(), maturity:'', repayType:'At Maturity', repayMode:'Interest', monthly:'', nextDate:'', nextValue:'', final:'', notes:'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   const vendors = [...new Set(['Stable Money','Wint Wealth', ...data.investments.map(i=>(i.Vendor||'').trim()).filter(Boolean)])];
@@ -2112,7 +2118,7 @@ function Investments({ data, derived, onRefresh }) {
       const rowObj = (id, status) => rowValues('Investments', {
         ID:id, Name:form.name.trim(), Type:form.type, Vendor:form.vendor.trim(), Reserve:form.reserve,
         Principal:num(form.principal), 'Rate %':num(form.rate), 'Start Date':form.start, 'Maturity Date':form.maturity,
-        'Repayment Type':form.repayType, 'Monthly Repayment': form.repayType==='Monthly'?num(form.monthly):'',
+        'Repayment Type':form.repayType, 'Repayment Mode':form.repayMode, 'Monthly Repayment': form.repayType!=='At Maturity'?num(form.monthly):'',
         'Next Payment Date':form.nextDate, 'Next Payment Value':num(form.nextValue)||'',
         'Final Settlement':num(form.final)||'', Status:status, Notes:form.notes,
       });
@@ -2142,7 +2148,7 @@ function Investments({ data, derived, onRefresh }) {
   const openEdit = (i) => {
     setForm({ name:i.Name||'', type:i.Type||'FD', vendor:i.Vendor||'', reserve:i.Reserve||'Cash', principal:i.Principal||'',
       rate:i['Rate %']||'', start:dateKey(i['Start Date'])||todayStr(), maturity:dateKey(i['Maturity Date'])||'',
-      repayType:i['Repayment Type']||'At Maturity', monthly:i['Monthly Repayment']||'', nextDate:dateKey(i['Next Payment Date'])||'',
+      repayType:i['Repayment Type']||'At Maturity', repayMode:i['Repayment Mode']||'Interest', monthly:i['Monthly Repayment']||'', nextDate:dateKey(i['Next Payment Date'])||'',
       nextValue:i['Next Payment Value']||'', final:i['Final Settlement']||'', notes:i.Notes||'' });
     setEditing(i); setShowForm(true);
   };
@@ -2183,8 +2189,14 @@ function Investments({ data, derived, onRefresh }) {
           <div className="form-group"><label>Rate % (yearly)</label><input type="number" step="0.01" value={form.rate} onChange={e=>f('rate',e.target.value)}/></div>
           <div className="form-group"><label>Start Date</label><input type="date" value={form.start} onChange={e=>f('start',e.target.value)}/></div>
           <div className="form-group"><label>Maturity Date</label><input type="date" value={form.maturity} onChange={e=>f('maturity',e.target.value)}/></div>
-          <div className="form-group"><label>Repayment</label><select value={form.repayType} onChange={e=>f('repayType',e.target.value)}><option>At Maturity</option><option>Monthly</option></select></div>
-          {form.repayType==='Monthly' && <div className="form-group"><label>Monthly Repayment (₹)</label><input type="number" value={form.monthly} onChange={e=>f('monthly',e.target.value)}/></div>}
+          <div className="form-group"><label>Repayment Mode</label>
+            <select value={form.repayMode} onChange={e=>f('repayMode',e.target.value)}><option>Interest</option><option>Interest+Principal</option></select>
+          </div>
+          <div className="form-group"><label>Repayment On <span style={{color:'var(--text-muted)'}}>pick or type your own</span></label>
+            <input list="repay-on-opts" placeholder="Monthly / Quarterly / …" value={form.repayType} onChange={e=>f('repayType',e.target.value)}/>
+            <datalist id="repay-on-opts"><option value="At Maturity"/><option value="Monthly"/><option value="Quarterly"/><option value="Yearly"/></datalist>
+          </div>
+          {form.repayType!=='At Maturity' && <div className="form-group"><label>Repayment Amount (₹ per period)</label><input type="number" value={form.monthly} onChange={e=>f('monthly',e.target.value)}/></div>}
           <div className="form-group"><label>Next Payment Date</label><input type="date" value={form.nextDate} onChange={e=>f('nextDate',e.target.value)}/></div>
           <div className="form-group"><label>Next Payment Value (₹)</label><input type="number" placeholder={form.repayType==='Monthly'?form.monthly:''} value={form.nextValue} onChange={e=>f('nextValue',e.target.value)}/></div>
           <div className="form-group"><label>Final Settlement (₹) <span style={{color:'var(--text-muted)'}}>expected at maturity</span></label><input type="number" value={form.final} onChange={e=>f('final',e.target.value)}/></div>
@@ -2212,6 +2224,8 @@ function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
   const [showPay, setShowPay] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pay, setPay] = useState({ date: todayStr(), reserve:'Cash', amount:'', isFinal:false, notes:'' });
+  const [gen, setGen] = useState(null);       // schedule-generation panel state
+  const [rowEdit, setRowEdit] = useState(null); // inline receive/edit of one schedule row
   const payments = data.payments.filter(p => p['Ref Type']==='Investment' && p['Ref ID']===inv.ID);
   const received = payments.reduce((s,p)=>s+num(p.Amount),0);
   const closed = (inv.Status||'Active')==='Closed';
@@ -2268,7 +2282,7 @@ function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
         <div style={{display:'flex',gap:18,flexWrap:'wrap',marginBottom:12,fontSize:12,color:'var(--text-secondary)'}}>
           <span>Principal: <b className="mono">{fmtINR(inv.Principal)}</b></span>
           <span>Received so far: <b className="mono" style={{color:'var(--green)'}}>{fmtINR(received)}</b></span>
-          <span>Repayment: <b>{inv['Repayment Type']||'—'}{(inv['Repayment Type']||'')==='Monthly' && num(inv['Monthly Repayment'])>0?` · ${fmtINR(inv['Monthly Repayment'])}/mo`:''}</b></span>
+          <span>Repayment: <b>{inv['Repayment Type']||'—'}{inv['Repayment Mode']?` (${inv['Repayment Mode']})`:''}{(inv['Repayment Type']||'')!=='At Maturity' && num(inv['Monthly Repayment'])>0?` · ${fmtINR(inv['Monthly Repayment'])}/period`:''}</b></span>
           {num(inv['Final Settlement'])>0 && <span>Final settlement: <b className="mono">{fmtINR(inv['Final Settlement'])}</b></span>}
           <span>Funded from: <b>{inv.Reserve||'—'}</b></span>
         </div>
@@ -2278,6 +2292,165 @@ function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
             <tr key={p.ID}><td className="mono">{dateKey(p.Date)}</td><td className="mono">{fmtINR(p.Amount)}</td><td>{p.Notes||'—'}</td></tr>
           ))}</tbody>
         </table></div>}
+
+        {/* ── Repayment schedule — generated on demand, editable until maturity ── */}
+        {(() => {
+          const sched = (data.investSchedule||[]).filter(s => s['Investment ID']===inv.ID)
+            .sort((a,b) => dateKey(a['Due Date']).localeCompare(dateKey(b['Due Date'])));
+          const receivedCount = sched.filter(s => s.Status==='Received').length;
+          const stepFor = (t) => t==='Quarterly' ? 3 : t==='Yearly' ? 12 : 1;
+
+          // After any schedule change, point the investment's Next Payment at
+          // the earliest still-planned period (rows = remaining planned rows).
+          const syncNext = async (rows) => {
+            const next = [...rows].sort((a,b) => a.date.localeCompare(b.date))[0];
+            await updateRow('Investments', inv._row, rowValues('Investments', { ...inv, 'Next Payment Date': next ? next.date : '', 'Next Payment Value': next ? next.amount : '' }));
+          };
+          const remaining = (exceptId, patch) => sched
+            .filter(s => s.Status!=='Received' && s.ID!==exceptId)
+            .map(s => ({ date: dateKey(s['Due Date']), amount: num(s.Amount) }))
+            .concat(patch ? [patch] : []);
+
+          const openGen = () => setGen({
+            first: dateKey(inv['Next Payment Date']) || addMonths(dateKey(inv['Start Date'])||todayStr(), stepFor(inv['Repayment Type'])),
+            every: stepFor(inv['Repayment Type']),
+            amount: num(inv['Monthly Repayment']) || num(inv['Next Payment Value']) || '',
+            until: dateKey(inv['Maturity Date']) || '',
+            rows: null,
+          });
+          const doPreview = () => {
+            const every = Math.max(1, num(gen.every));
+            if (!gen.first || !gen.until) { alert('Set the first repayment date and the until (maturity) date.'); return; }
+            const rows = [];
+            for (let i = 0; i < 120; i++) {
+              const d = addMonths(gen.first, every*i);
+              if (d > gen.until) break;
+              rows.push({ key: uid('g'), date: d, amount: gen.amount });
+            }
+            if (rows.length===0) { alert('No periods fall between the first date and maturity.'); return; }
+            setGen(g => ({ ...g, rows }));
+          };
+          const saveSchedule = async () => {
+            const rows = gen.rows.filter(r => r.date && num(r.amount) > 0);
+            if (rows.length===0) { alert('Nothing to save — every period needs a date and amount.'); return; }
+            setSaving(true);
+            try {
+              for (const r of rows) {
+                await appendRow('InvestSchedule', rowValues('InvestSchedule', { ID:uid('SC'), 'Investment ID':inv.ID, 'Due Date':r.date, Amount:num(r.amount), Status:'Planned', 'Received Date':'', Reserve:'', Notes:'' }));
+              }
+              await syncNext(rows.map(r => ({ date:r.date, amount:num(r.amount) })));
+              setGen(null); onRefresh();
+            } catch(e) { alert('Error: '+e.message); }
+            setSaving(false);
+          };
+          const saveRowEdit = async (s) => {
+            const amt = num(rowEdit.amount);
+            if (amt<=0) { alert('Enter the amount.'); return; }
+            setSaving(true);
+            try {
+              if (rowEdit.mode==='receive') {
+                const payId = uid('P');
+                await appendRow('Payments', rowValues('Payments', { ID:payId, Date:rowEdit.date, 'Ref Type':'Investment', 'Ref ID':inv.ID, Person:inv.Vendor||inv.Name, Mode:'Bank', Amount:amt, 'Weight Grams':'', Notes:'Scheduled repayment' }));
+                await addEntry(inv.ID, rowEdit.date, { reserve:rowEdit.reserve, direction:'In', qty:amt, value:amt,
+                  counterparty:inv.Vendor||inv.Name, category:'Investment Return', ref:s.ID, notes:`Repayment — ${inv.Name}` });
+                await updateRow('InvestSchedule', s._row, rowValues('InvestSchedule', { ...s, Amount:amt, Status:'Received', 'Received Date':rowEdit.date, Reserve:rowEdit.reserve }));
+                await syncNext(remaining(s.ID));
+              } else {
+                await updateRow('InvestSchedule', s._row, rowValues('InvestSchedule', { ...s, 'Due Date':rowEdit.date, Amount:amt }));
+                await syncNext(remaining(s.ID, { date:rowEdit.date, amount:amt }));
+              }
+              setRowEdit(null); onRefresh();
+            } catch(e) { alert('Error: '+e.message); }
+            setSaving(false);
+          };
+          const removePlan = async (s) => {
+            if (!window.confirm(`Remove the ${dateKey(s['Due Date'])} period from the schedule?`)) return;
+            setSaving(true);
+            try { await deleteRow('InvestSchedule', s._row); await syncNext(remaining(s.ID)); onRefresh(); }
+            catch(e) { alert('Error: '+e.message); }
+            setSaving(false);
+          };
+
+          return (
+            <div style={{marginTop:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:8,flexWrap:'wrap'}}>
+                <div style={{fontSize:11,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.05em'}}>
+                  📅 Repayment Schedule{sched.length>0 && <span style={{fontWeight:400,textTransform:'none'}}> — {receivedCount}/{sched.length} received</span>}
+                </div>
+                {!closed && !gen && sched.length===0 && <button className="btn btn-secondary btn-sm" onClick={openGen}>⚡ Generate Schedule</button>}
+              </div>
+
+              {gen && <div className="settle-box" style={{marginBottom:10}}>
+                <div className="form-grid">
+                  <div className="form-group"><label>First repayment</label><input type="date" value={gen.first} onChange={e=>setGen(g=>({...g,first:e.target.value,rows:null}))}/></div>
+                  <div className="form-group"><label>Every (months)</label><input type="number" min="1" value={gen.every} onChange={e=>setGen(g=>({...g,every:e.target.value,rows:null}))}/></div>
+                  <div className="form-group"><label>Amount / period (₹)</label><input type="number" value={gen.amount} onChange={e=>setGen(g=>({...g,amount:e.target.value,rows:null}))}/></div>
+                  <div className="form-group"><label>Until (maturity)</label><input type="date" value={gen.until} onChange={e=>setGen(g=>({...g,until:e.target.value,rows:null}))}/></div>
+                </div>
+                {!gen.rows && <div className="btn-row">
+                  <button className="btn btn-primary btn-sm" onClick={doPreview}>Preview periods</button>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>setGen(null)}>Cancel</button>
+                </div>}
+                {gen.rows && <>
+                  <div style={{fontSize:11,color:'var(--text-muted)',margin:'10px 0 6px'}}>Adjust any period or remove months you don't expect — then save.</div>
+                  <div className="gap-12">
+                    {gen.rows.map(r => (
+                      <div key={r.key} style={{display:'flex',gap:8,alignItems:'center'}}>
+                        <input type="date" value={r.date} style={{maxWidth:160}} onChange={e=>setGen(g=>({...g,rows:g.rows.map(x=>x.key===r.key?{...x,date:e.target.value}:x)}))}/>
+                        <input type="number" value={r.amount} placeholder="₹" style={{maxWidth:120}} onChange={e=>setGen(g=>({...g,rows:g.rows.map(x=>x.key===r.key?{...x,amount:e.target.value}:x)}))}/>
+                        <button className="row-del" title="Remove this month" onClick={()=>setGen(g=>({...g,rows:g.rows.filter(x=>x.key!==r.key)}))}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:12,color:'var(--text-secondary)',marginTop:10}}>{gen.rows.length} payment{gen.rows.length!==1?'s':''} · total <b className="mono">{fmtINR(gen.rows.reduce((s,r)=>s+num(r.amount),0))}</b></div>
+                  <div className="btn-row">
+                    <button className="btn btn-primary btn-sm" onClick={saveSchedule} disabled={saving}>{saving?<span className="spinner"/>:'💾 Save Schedule'}</button>
+                    <button className="btn btn-secondary btn-sm" onClick={()=>setGen(null)}>Cancel</button>
+                  </div>
+                </>}
+              </div>}
+
+              {sched.length===0 && !gen && <div style={{fontSize:12,color:'var(--text-muted)'}}>No schedule yet{closed?'.':' — generate one to track each repayment until maturity.'}</div>}
+              {sched.length>0 && <div className="table-wrap"><table>
+                <thead><tr><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+                <tbody>{sched.map(s => {
+                  const isEdit = rowEdit && rowEdit.id===s.ID;
+                  const overdueRow = s.Status!=='Received' && dateKey(s['Due Date']) <= todayStr();
+                  return (<React.Fragment key={s.ID}>
+                    <tr>
+                      <td className="mono">{dateKey(s['Due Date'])}</td>
+                      <td className="mono">{fmtINR(s.Amount)}</td>
+                      <td>{s.Status==='Received'
+                        ? <span className="badge badge-green">✓ {dateKey(s['Received Date'])}{s.Reserve?` → ${s.Reserve}`:''}</span>
+                        : overdueRow ? <span className="badge badge-red">Due</span> : <span className="badge badge-blue">Planned</span>}</td>
+                      <td>{s.Status!=='Received' && !closed && <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
+                        <button className="btn btn-primary btn-sm" onClick={()=>setRowEdit({ id:s.ID, mode:'receive', date:todayStr(), amount:s.Amount, reserve: cashNames.includes(inv.Reserve)?inv.Reserve:(cashNames[0]||'Cash') })}>✓ Receive</button>
+                        <button className="btn btn-secondary btn-sm" title="Edit period" onClick={()=>setRowEdit({ id:s.ID, mode:'edit', date:dateKey(s['Due Date']), amount:s.Amount })}>✏️</button>
+                        <button className="btn btn-danger btn-sm" title="Remove period" onClick={()=>removePlan(s)} disabled={saving}>✕</button>
+                      </div>}</td>
+                    </tr>
+                    {isEdit && <tr><td colSpan={4}>
+                      <div className="settle-box" style={{margin:'4px 0'}}>
+                        <div className="form-grid">
+                          <div className="form-group"><label>{rowEdit.mode==='receive'?'Received on':'Due date'}</label><input type="date" value={rowEdit.date} onChange={e=>setRowEdit(p=>({...p,date:e.target.value}))}/></div>
+                          <div className="form-group"><label>Amount (₹)</label><input type="number" value={rowEdit.amount} onChange={e=>setRowEdit(p=>({...p,amount:e.target.value}))}/></div>
+                          {rowEdit.mode==='receive' && <div className="form-group"><label>Received Into</label>
+                            <select value={rowEdit.reserve} onChange={e=>setRowEdit(p=>({...p,reserve:e.target.value}))}>{cashNames.map(n=><option key={n} value={n}>{n}</option>)}</select>
+                          </div>}
+                        </div>
+                        <div className="btn-row">
+                          <button className="btn btn-primary btn-sm" onClick={()=>saveRowEdit(s)} disabled={saving}>{saving?<span className="spinner"/>:rowEdit.mode==='receive'?'✓ Mark Received':'Update'}</button>
+                          <button className="btn btn-secondary btn-sm" onClick={()=>setRowEdit(null)}>Cancel</button>
+                        </div>
+                      </div>
+                    </td></tr>}
+                  </React.Fragment>);
+                })}</tbody>
+              </table></div>}
+            </div>
+          );
+        })()}
+
         {!closed && <div style={{marginTop:12}}>
           {!showPay
             ? <button className="btn btn-primary btn-sm" onClick={openPay}>💰 Record Repayment / Maturity</button>
@@ -2889,6 +3062,8 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
   }, [initialPropId]);
   const [filterMonth, setFM] = useState(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).toLocaleString('en-IN',{month:'long'}));
   const [filterYear,  setFY] = useState(String(new Date(new Date().getFullYear(), new Date().getMonth()-1, 1).getFullYear()));
+  const [showNotPaid, setShowNotPaid] = useState(true);
+  const [showPaid, setShowPaid] = useState(true);
 
   const _now       = new Date();
   const _lastMonth = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
@@ -3031,8 +3206,31 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
 
   const filtered = data.rent.filter(r=>r.Month===filterMonth && String(r.Year)===filterYear);
   const total    = filtered.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
-  const paidIds  = filtered.filter(r=>r.Status==='Paid').map(r=>r['Property ID']);
-  const notPaid  = data.properties.filter(p=>!paidIds.includes(p.ID)&&p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage');
+
+  // Who hasn't paid (fully) for the selected month — with tenant & history detail.
+  const paidSums = {};
+  filtered.filter(r=>r.Status==='Paid'||r.Status==='Partial').forEach(r=>{ paidSums[r['Property ID']] = (paidSums[r['Property ID']]||0) + Number(r.Amount||0); });
+  const notPaid = data.properties
+    .filter(p=>p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage')
+    .map(p=>{
+      const due = Number(p['Rent Amount']||0), got = paidSums[p.ID]||0;
+      return { p, due, got, pending: Math.max(0, due-got),
+        tenant: data.tenants.find(t=>t['Property ID']===p.ID&&t.Status==='Active'),
+        lastPaid: data.rent.filter(r=>r['Property ID']===p.ID&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0] };
+    })
+    .filter(x => x.due>0 ? x.got < x.due - 0.5 : x.got <= 0);
+  const totalPending = notPaid.reduce((s,x)=>s+(x.pending||x.due),0);
+
+  // Jump to the Property View of one property (used by property-name links).
+  const goProp = (id) => { setFilterProp(id); setViewTab('property'); };
+  const propLink = (id, label) => <span style={{color:'var(--accent)',cursor:'pointer',textDecoration:'underline',textUnderlineOffset:3}} title="Open property view" onClick={e=>{e.stopPropagation(); goProp(id);}}>{label}</span>;
+  // Record Rent prefilled for one property (from the not-paid cards).
+  const openAddFor = (propId) => {
+    const prop = data.properties.find(p=>p.ID===propId);
+    setForm({ ...blank, 'Property ID':propId, perMonthAmount: prop?.['Rent Amount']||'', selectedMonths:[{month:filterMonth, year:filterYear}], totalAmount: Number(prop?.['Rent Amount']||0)||'' });
+    setMode('add');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div>
@@ -3229,13 +3427,45 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
           </select>
           <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)',marginLeft:'auto',whiteSpace:'nowrap'}}>Collected: {fmtINR(total)}</div>
         </div>
-        {notPaid.length>0 && (
-          <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:13}}>
-            <span style={{color:'var(--red)',fontWeight:500}}>Pending: </span>
-            <span style={{color:'var(--text-secondary)'}}>{notPaid.map(p=>p.Name).join(', ')}</span>
-          </div>
-        )}
-        <div className="card">
+
+        {/* Paid / Not-Paid toggles */}
+        <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+          <button className={`subnav-pill ${showNotPaid?'active':''}`} onClick={()=>setShowNotPaid(v=>!v)}>⏳ Not Paid ({notPaid.length})</button>
+          <button className={`subnav-pill ${showPaid?'active':''}`} onClick={()=>setShowPaid(v=>!v)}>✅ Paid ({filtered.length})</button>
+        </div>
+
+        {/* NOT PAID — highlighted detail, shown before the paid list */}
+        {showNotPaid && (notPaid.length===0
+          ? <div style={{background:'var(--green-light)',border:'1px solid rgba(52,211,153,.3)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:13,color:'var(--green)'}}>🎉 Everyone has paid for {filterMonth} {filterYear}.</div>
+          : <div className="card" style={{marginBottom:16,border:'1px solid rgba(248,113,113,.35)'}}>
+              <div className="section-row" style={{marginBottom:12}}>
+                <div className="card-title" style={{marginBottom:0,color:'var(--red)'}}>⏳ Not Paid — {filterMonth} {filterYear}</div>
+                <div className="mono" style={{fontSize:13,color:'var(--red)'}}>{fmtINR(totalPending)} pending</div>
+              </div>
+              <div className="gap-12">
+                {notPaid.map(x => (
+                  <div key={x.p.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',padding:'12px 14px',background:'var(--navy)',border:'1px solid rgba(248,113,113,.25)',borderRadius:10}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:14}}>
+                        {propLink(x.p.ID, x.p.Name)}
+                        {x.got>0 && <span className="badge badge-gold" style={{marginLeft:8}}>partial · got {fmtINR(x.got)}</span>}
+                      </div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',marginTop:3}}>
+                        {x.tenant ? <>👤 {x.tenant.Name}{x.tenant.Phone?` · 📞 ${x.tenant.Phone}`:''}</> : '⚠️ No active tenant'}
+                        {' · '}last paid <b style={{color:x.lastPaid?'var(--text-secondary)':'var(--red)'}}>{x.lastPaid?`${x.lastPaid.Month} ${x.lastPaid.Year}`:'never'}</b>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <span className="mono" style={{color:'var(--red)',fontSize:14}}>{fmtINR(x.pending || x.due)}</span>
+                      <button className="btn btn-primary btn-sm" onClick={()=>openAddFor(x.p.ID)}>💰 Record</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>)}
+
+        {showPaid && <div className="card">
+          <div className="card-title">✅ Paid — {filterMonth} {filterYear}</div>
           {filtered.length===0 ? <div className="empty"><p>No rent records for {filterMonth} {filterYear}.</p></div> :
           <div className="table-wrap"><table>
             <thead><tr><th>Property</th><th>Tenant</th><th>Month</th><th>Amount</th><th>Paid Date</th><th>Method</th><th>Status</th><th>Notes</th><th></th></tr></thead>
@@ -3243,7 +3473,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
               const prop=data.properties.find(p=>p.ID===r['Property ID']);
               const tenant=data.tenants.find(t=>t.ID===r['Tenant ID']);
               return (<tr key={r.ID}>
-                <td className="name">{prop?prop.Name:r['Property ID']}</td>
+                <td className="name">{propLink(r['Property ID'], prop?prop.Name:r['Property ID'])}</td>
                 <td>{tenant?tenant.Name:'—'}</td>
                 <td>{r.Month} {r.Year}</td>
                 <td className="mono">{fmtINR(r.Amount)}</td>
@@ -3258,7 +3488,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
               </tr>);
             })}</tbody>
           </table></div>}
-        </div>
+        </div>}
       </>)}
 
       {/* ── PROPERTY VIEW ── */}
@@ -3961,7 +4191,7 @@ function App() {
   const [page, setPage] = useState('home');
   const [editTxn, setEditTxn] = useState(null);
   const [rentTarget, setRentTarget] = useState(null);
-  const [data, setData] = useState({ stock: [], reserves: [], banks: [], entries: [], lending: [], payments: [], reminders: [], investments: [], properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
+  const [data, setData] = useState({ stock: [], reserves: [], banks: [], entries: [], lending: [], payments: [], reminders: [], investments: [], investSchedule: [], properties: [], tenants: [], rent: [], maintenance: [], utilities: [] });
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -3989,7 +4219,7 @@ function App() {
       const [j, r] = await Promise.all([readAllSheets('jewel'), cfg.rentSheetId ? readAllSheets('rent') : {}]);
       setData({
         stock: j.Stock||[], reserves: j.Reserves||[], banks: j.Banks||[], entries: j.Entries||[],
-        lending: j.Lending||[], payments: j.Payments||[], reminders: j.Reminders||[], investments: j.Investments||[],
+        lending: j.Lending||[], payments: j.Payments||[], reminders: j.Reminders||[], investments: j.Investments||[], investSchedule: j.InvestSchedule||[],
         properties: r.Properties||[], tenants: r.Tenants||[], rent: r.Rent||[], maintenance: r.Maintenance||[], utilities: r.Utilities||[],
       });
       setAuthed(true);
