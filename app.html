@@ -832,14 +832,18 @@ function InsightsHome({ data, derived, onNav }) {
   const monthName = now.toLocaleString('en-US',{month:'long'});
   const yearStr = String(now.getFullYear());
   const activeTenants = data.tenants.filter(t => (t.Status||'Active') === 'Active');
-  const rentRows = data.rent.filter(r => r.Month === monthName && String(r.Year) === yearStr);
+  const rentRows = data.rent.filter(r => (r.Month||'').trim().toLowerCase() === monthName.toLowerCase() && String(r.Year).trim() === yearStr);
+  // Match by Property ID (like the Rent page does — Tenant ID can be blank on
+  // rows) and SUM all Paid/Partial rows, so installments count up correctly.
   const rentStatus = activeTenants.map(t => {
     const prop = data.properties.find(p => p.ID === t['Property ID']);
-    const row = rentRows.find(r => r['Tenant ID'] === t.ID);
-    const paid = !!row && (row.Status === 'Paid' || row.Status === 'Partial');
-    return { t, prop, paid, partial: row?.Status === 'Partial', amount: num(row?.Amount || prop?.['Rent Amount']) };
+    const paidRows = rentRows.filter(r => r['Property ID'] === t['Property ID'] && (r.Status === 'Paid' || r.Status === 'Partial'));
+    const paidAmt = paidRows.reduce((s,r) => s + num(r.Amount), 0);
+    const due = num(prop?.['Rent Amount']) || paidAmt;
+    const paid = paidAmt > 0 && paidAmt >= due - 0.5;
+    return { t, prop, paid, partial: paidAmt > 0 && !paid, paidAmt, due, pendingAmt: Math.max(0, due - paidAmt) };
   });
-  const rentCollected = rentStatus.filter(x => x.paid).reduce((s,x) => s + x.amount, 0);
+  const rentCollected = rentStatus.reduce((s,x) => s + x.paidAmt, 0);
   const rentPending = rentStatus.filter(x => !x.paid);
 
   // Needs attention — everything that wants an action, most urgent first
@@ -849,7 +853,7 @@ function InsightsHome({ data, derived, onNav }) {
   inv.upcoming.filter(i => dateKey(i['Next Payment Date']) <= today)
     .forEach(i => attention.push({ icon:'📈', level:'red', nav:'investments', text:`${i.Name} — payment ${fmtINR(i['Next Payment Value']||i['Monthly Repayment'])} due ${dateKey(i['Next Payment Date'])}` }));
   inv.maturing.forEach(i => attention.push({ icon:'⏳', level:'gold', nav:'investments', text:`${i.Name} matures ${dateKey(i['Maturity Date'])} — expect ${fmtINR(i['Final Settlement']||i.Principal)}` }));
-  rentPending.forEach(x => attention.push({ icon:'🏢', level:'gold', nav:'rent', text:`Rent pending — ${x.t.Name}${x.prop?` (${x.prop.Name})`:''} · ${fmtINR(x.amount)}` }));
+  rentPending.forEach(x => attention.push({ icon:'🏢', level:'gold', nav:'rent', text:`Rent ${x.partial?'balance':'pending'} — ${x.t.Name}${x.prop?` (${x.prop.Name})`:''} · ${fmtINR(x.pendingAmt || x.due)}` }));
   d.openReminders.forEach(r => attention.push({ icon:'🔔', nav:'reminders', level: r['Due Date'] && dateKey(r['Due Date']) < today ? 'red' : 'gold', text:`${r.Title}${r['Due Date']?` — due ${dateKey(r['Due Date'])}`:''}` }));
   attention.sort((a,b) => (a.level==='red'?0:1) - (b.level==='red'?0:1));
 
@@ -945,7 +949,9 @@ function InsightsHome({ data, derived, onNav }) {
                 {rentStatus.map(x => (
                   <div key={x.t.ID} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'8px 12px',background:'var(--navy)',borderRadius:8,border:'1px solid var(--border)',fontSize:12.5}}>
                     <span>{x.paid ? '✅' : '⏳'} {x.t.Name} <span style={{color:'var(--text-muted)'}}>{x.prop?.Name}</span></span>
-                    <span className="mono" style={{color: x.paid?'var(--green)':'var(--gold)'}}>{fmtINR(x.amount)}{x.partial?' (partial)':''}</span>
+                    <span className="mono" style={{color: x.paid?'var(--green)':'var(--gold)'}}>
+                      {x.partial ? `${fmtINR(x.paidAmt)} of ${fmtINR(x.due)}` : fmtINR(x.paid ? x.paidAmt : x.due)}
+                    </span>
                   </div>
                 ))}
               </div>
