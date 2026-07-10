@@ -827,10 +827,11 @@ function InsightsHome({ data, derived, onNav }) {
   const topCats = (o) => { const es = Object.entries(o).sort((a,b)=>b[1]-a[1]); const max = es[0]?.[1]||1; return es.slice(0,4).map(([n,v])=>({n,v,pct:Math.max(4, v/max*100)})); };
   const incomeCats = topCats(catIn), expenseCats = topCats(catOut);
 
-  // Rent radar — who has paid this month
+  // Rent radar — always the PREVIOUS month (rent is collected in arrears)
   const now = new Date();
-  const monthName = now.toLocaleString('en-US',{month:'long'});
-  const yearStr = String(now.getFullYear());
+  const radarDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const monthName = radarDate.toLocaleString('en-US',{month:'long'});
+  const yearStr = String(radarDate.getFullYear());
   const activeTenants = data.tenants.filter(t => (t.Status||'Active') === 'Active');
   const rentRows = data.rent.filter(r => (r.Month||'').trim().toLowerCase() === monthName.toLowerCase() && String(r.Year).trim() === yearStr);
   // Match by Property ID (like the Rent page does — Tenant ID can be blank on
