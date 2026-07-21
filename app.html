@@ -1229,7 +1229,7 @@ function entryToLeg(e) {
   return {
     key: uid('lg'), direction: e.Direction, reserve: e.Reserve, subtype: e.Subtype || '',
     weight: cash ? '' : (hasWeight ? e['Weight Grams'] : ''),
-    touch:  cash ? '92' : (e.Touch !== '' ? e.Touch : '92'),
+    touch:  cash ? '100' : (e.Touch !== '' ? e.Touch : '100'),
     margin: cash ? '0'  : (e.Margin !== '' ? e.Margin : '0'),
     direct: cash ? '' : (hasWeight ? '' : e.Qty),
     value:  cash ? e.Qty : (e.Value || ''),
@@ -1255,7 +1255,7 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
   const [remindDate, setRemindDate] = useState('');
   const [remindTitle, setRemindTitle] = useState('');
 
-  const newLeg = (direction) => ({ key: uid('lg'), direction, reserve: direction==='Out'?'Ornaments':'Cash', subtype:'', weight:'', touch:'92', margin:'0', direct:'', value:'' });
+  const newLeg = (direction) => ({ key: uid('lg'), direction, reserve: direction==='Out'?'Ornaments':'Cash', subtype:'', weight:'', touch:'100', margin:'0', direct:'', value:'' });
   const [legs, setLegs] = useState(edit ? edit.entries.map(entryToLeg) : [newLeg('Out'), newLeg('In')]);
   const upd = (key, patch) => setLegs(ls => ls.map(l => l.key===key ? { ...l, ...patch } : l));
   const addLeg = (dir) => setLegs(ls => [...ls, newLeg(dir)]);
@@ -1398,13 +1398,22 @@ function Convert({ data, derived, onRefresh, onDone, edit }) {
 }
 
 // ── TRANSACTIONS — entries grouped by Txn ID, view & edit ────────────────────
-function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
+function Transactions({ data, derived, onRefresh, onNew, onEdit, onNav }) {
   const [typeF, setTypeF] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [q, setQ] = useState('');
   const [openTxn, setOpenTxn] = useState(null);
   const [busy, setBusy] = useState('');
+
+  const getNavPage = (k) => {
+    if (k === 'Rent') return 'rent';
+    if (k === 'Lending' || k === 'Lending Return') return 'lending';
+    if (k === 'Expense') return 'expenses';
+    if (k === 'Maintenance') return 'maintenance';
+    if (k === 'Investment' || k === 'Investment Return') return 'investments';
+    return null;
+  };
 
   // Group entry rows by Txn ID — rent collections, lending, returns/interest,
   // expenses and conversions ALL post Entries, so they all show up here.
@@ -1460,7 +1469,7 @@ function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
       <div className="card" style={{marginBottom:14}}>
         <div className="section-row" style={{marginBottom:10}}>
           <div className="card-title" style={{marginBottom:0}}>🔎 Filter</div>
-          <button className="btn btn-primary btn-sm" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
+          <button className="btn btn-primary" onClick={onNew}><Icon name="exchange" size={14}/> New Transaction</button>
         </div>
         <div className="form-grid">
           <div className="form-group"><label>Type</label>
@@ -1478,7 +1487,7 @@ function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
             <button key={p} className="btn btn-secondary btn-sm" onClick={()=>preset(p)}>{label}</button>)}
           {(typeF!=='all'||from||to||ql) && <button className="btn btn-secondary btn-sm" onClick={()=>{setTypeF('all');setFrom('');setTo('');setQ('');}}>✕ Clear filters</button>}
         </div>
-        <div style={{marginTop:12,fontSize:13,display:'flex',gap:18,flexWrap:'wrap',borderTop:'1px solid var(--border)',paddingTop:10}}>
+        <div style={{display:'flex',gap:18,flexWrap:'wrap',borderTop:'1px solid var(--border)',paddingTop:10,marginTop:12,fontSize:13}}>
           <span><b>{shown.length}</b> of {list.length} transactions</span>
           <span style={{color:'var(--green)'}}>↓ In {fmtINR(totals.in)}</span>
           <span style={{color:'var(--red)'}}>↑ Out {fmtINR(totals.out)}</span>
@@ -1490,45 +1499,57 @@ function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
       <div className="gap-12">{shown.map(g => {
         const isOpen = openTxn===g.txnId;
         return (
-        <div className="card" key={g.txnId} style={{padding:0,overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenTxn(o=>o===g.txnId?null:g.txnId)}>
-            <div>
-              <div style={{fontWeight:600,fontSize:14}}>{g.counterparty || (g.kind==='Expense'?'Expense':'Transaction')} <span className={`badge ${kindBadge(g.kind)}`} style={{marginLeft:6}}>{g.kind}</span></div>
-              <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{g.date} · {g.legs.length} leg{g.legs.length>1?'s':''}{g.notes?` · ${g.notes}`:''}</div>
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:10}}>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
-                {g.legs.map(l => (
-                  <span key={l.ID} className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓':'↑'} {l.Reserve} {fmtReserve(l.Reserve, l.Qty)}</span>
-                ))}
+          <div className="card" key={g.txnId} style={{padding:0,overflow:'hidden'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenTxn(o=>o===g.txnId?null:g.txnId)}>
+              <div>
+                <div style={{fontWeight:600,fontSize:14}}>{g.counterparty || (g.kind==='Expense'?'Expense':'Transaction')} <span className={`badge ${kindBadge(g.kind)}`} style={{marginLeft:6}}>{g.kind}</span></div>
+                <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{g.date} · {g.legs.length} leg{g.legs.length>1?'s':''}{g.notes?` · ${g.notes}`:''}</div>
               </div>
-              <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+                  {g.legs.map(l => (
+                    <span key={l.ID} className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓':'↑'} {l.Reserve} {fmtReserve(l.Reserve, l.Qty)}</span>
+                  ))}
+                </div>
+                <span style={{color:'var(--text-muted)',fontSize:20,transition:'transform .2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'none'}}>›</span>
+              </div>
             </div>
-          </div>
 
-          {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
-            <div className="table-wrap"><table>
-              <thead><tr><th>Dir</th><th>Reserve</th><th>Subtype</th><th>Qty</th><th>Touch</th><th>Value</th><th>Note</th></tr></thead>
-              <tbody>{g.legs.map(l => (
-                <tr key={l.ID}>
-                  <td><span className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓ In':'↑ Out'}</span></td>
-                  <td className="name">{l.Reserve}</td>
-                  <td>{l.Subtype||'—'}</td>
-                  <td className="mono">{fmtReserve(l.Reserve, l.Qty)}</td>
-                  <td className="mono" style={{color:'var(--text-muted)'}}>{l.Touch?`${l.Touch}${num(l.Margin)?'+'+l.Margin:''}`:'—'}</td>
-                  <td className="mono">{l.Value?fmtINR(l.Value):'—'}</td>
-                  <td style={{fontSize:12}}>{l.Notes||'—'}</td>
-                </tr>
-              ))}</tbody>
-            </table></div>
-            <div className="btn-row">
-              {g.editable
-                ? <button className="btn btn-primary btn-sm" onClick={()=>onEdit({ txnId:g.txnId, date:g.date, counterparty:g.counterparty, notes:g.notes, entryRows:g.entryRows, entries:g.legs })}>✏️ Edit</button>
-                : <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit this on the {g.kind} page — it is linked to that {g.kind.toLowerCase()} record.</span>}
-              <button className="btn btn-danger btn-sm" onClick={()=>doDelete(g)} disabled={busy===g.txnId}>{busy===g.txnId?<span className="spinner"/>:'🗑 Delete'}</button>
-            </div>
-          </div>}
-        </div>);
+            {isOpen && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
+              <div className="table-wrap"><table>
+                <thead><tr><th>Dir</th><th>Reserve</th><th>Subtype</th><th>Qty</th><th>Touch</th><th>Value</th><th>Note</th></tr></thead>
+                <tbody>{g.legs.map(l => (
+                  <tr key={l.ID}>
+                    <td><span className={`badge ${l.Direction==='In'?'badge-green':'badge-red'}`}>{l.Direction==='In'?'↓ In':'↑ Out'}</span></td>
+                    <td className="name">{l.Reserve}</td>
+                    <td>{l.Subtype||'—'}</td>
+                    <td className="mono">{fmtReserve(l.Reserve, l.Qty)}</td>
+                    <td className="mono" style={{color:'var(--text-muted)'}}>{l.Touch?`${l.Touch}${num(l.Margin)?'+'+l.Margin:''}`:'—'}</td>
+                    <td className="mono">{l.Value?fmtINR(l.Value):'—'}</td>
+                    <td style={{fontSize:12}}>{l.Notes||'—'}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+              <div className="btn-row">
+                {g.editable
+                  ? <button className="btn btn-primary btn-sm" onClick={()=>onEdit({ txnId:g.txnId, date:g.date, counterparty:g.counterparty, notes:g.notes, entryRows:g.entryRows, entries:g.legs })}>✏️ Edit</button>
+                  : (() => {
+                      const navPage = getNavPage(g.kind);
+                      if (navPage && onNav) {
+                        return (
+                          <span style={{fontSize:12,color:'var(--text-muted)'}}>
+                            This is linked to a {g.kind.toLowerCase()} record. <button className="btn-link" style={{background:'none', border:'none', color:'var(--gold)', textDecoration:'underline', cursor:'pointer', padding:0, fontSize:12, fontFamily:'inherit'}} onClick={(e) => { e.stopPropagation(); onNav(navPage); }}>Go to {g.kind} Page to Edit</button>
+                          </span>
+                        );
+                      }
+                      return <span style={{fontSize:12,color:'var(--text-muted)'}}>Edit this on the {g.kind} page — it is linked to that {g.kind.toLowerCase()} record.</span>;
+                    })()
+                }
+                <button className="btn btn-danger btn-sm" onClick={()=>doDelete(g)} disabled={busy===g.txnId}>{busy===g.txnId?<span className="spinner"/>:'🗑 Delete'}</button>
+              </div>
+            </div>}
+          </div>
+        );
       })}</div>}
     </div>
   );
@@ -1537,6 +1558,7 @@ function Transactions({ data, derived, onRefresh, onNew, onEdit }) {
 // ── RESERVES — balances, opening, subtypes & per-reserve ledger ──────────────
 function ReservesPage({ data, derived, onRefresh, onNew }) {
   const [openRes, setOpenRes] = useState(null);
+  const [showAllTxns, setShowAllTxns] = useState(false);
   const [editRes, setEditRes] = useState(null); // reserve name being edited
   const [saving, setSaving] = useState(false);
   const [edit, setEdit] = useState({ opening:'', subtypes:'' });
@@ -1567,6 +1589,11 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
       setBank({ name:'', opening:'', notes:'' }); setShowAddBank(false); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
+  };
+
+  const handleToggleOpenRes = (name) => {
+    setOpenRes(o => o === name ? null : name);
+    setShowAllTxns(false);
   };
 
   return (
@@ -1602,9 +1629,10 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
       <div className="gap-12">{derived.reserves.map(r => {
         const entries = data.entries.filter(e => e.Reserve===r.name).sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
         const isOpen = openRes===r.name;
+        const displayedEntries = showAllTxns ? entries : entries.slice(0, 20);
         return (
         <div className="card" key={r.name} style={{padding:0,overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>setOpenRes(o=>o===r.name?null:r.name)}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',cursor:'pointer',flexWrap:'wrap',gap:8}} onClick={()=>handleToggleOpenRes(r.name)}>
             <div style={{display:'flex',alignItems:'center',gap:12}}>
               <div style={{width:36,height:36,borderRadius:8,background:'var(--accent-light)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{r.emoji}</div>
               <div>
@@ -1627,8 +1655,8 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
             {!isCash(r.name) && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Box-tagged opening: {fmtG(r.stockOpening)} (from Stock). Total opening = box-tagged + manual.</div>}
             {r.isBank && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Balance = opening + all In/Out entries for this account. (Account name can't be changed here — past entries reference it.)</div>}
             <div className="btn-row">
-              <button className="btn btn-primary btn-sm" onClick={()=>saveEdit(r)} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
-              <button className="btn btn-secondary btn-sm" onClick={()=>setEditRes(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={()=>saveEdit(r)} disabled={saving}>{saving?<span className="spinner"/>:'Save'}</button>
+              <button className="btn btn-secondary" onClick={()=>setEditRes(null)}>Cancel</button>
             </div>
           </div>}
 
@@ -1638,20 +1666,34 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
               <span>Net movement: <b className="mono" style={{color:r.moved>=0?'var(--green)':'var(--red)'}}>{r.moved>=0?'+':''}{fmtReserve(r.name, r.moved)}</b></span>
               <span>Balance: <b className="mono">{fmtReserve(r.name, r.balance)}</b></span>
             </div>
-            {entries.length===0 ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No movements yet.</div> :
+            {entries.length===0 ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No movements yet.</div> : <>
             <div className="table-wrap"><table>
-              <thead><tr><th>Date</th><th>Dir</th><th>Qty</th><th>Touch</th><th>Value</th><th>Who/Note</th></tr></thead>
-              <tbody>{entries.slice(0,50).map(e=>(
+              <thead><tr><th>Date</th><th>Dir</th><th>Qty</th><th>Touch</th><th>Value</th><th>Type</th><th>Who</th><th>Notes</th></tr></thead>
+              <tbody>{displayedEntries.map(e=>(
                 <tr key={e.ID}>
                   <td className="mono">{e.Date}</td>
                   <td><span className={`badge ${e.Direction==='In'?'badge-green':'badge-red'}`}>{e.Direction==='In'?'↓ In':'↑ Out'}</span></td>
                   <td className="mono">{fmtReserve(r.name, e.Qty)}</td>
                   <td className="mono" style={{color:'var(--text-muted)'}}>{e.Touch?`${e.Touch}${num(e.Margin)?'+'+e.Margin:''}`:'—'}</td>
                   <td className="mono">{e.Value?fmtINR(e.Value):'—'}</td>
-                  <td style={{fontSize:12}}>{e.Counterparty||e.Category||e.Notes||'—'}</td>
+                  <td><span className="badge badge-secondary" style={{fontSize:11,textTransform:'capitalize'}}>{e.Category||'—'}</span></td>
+                  <td>{e.Counterparty||'—'}</td>
+                  <td style={{fontSize:12}}>{e.Notes||'—'}</td>
                 </tr>
               ))}</tbody>
-            </table></div>}
+            </table></div>
+            {entries.length > 20 && (
+              <div style={{display:'flex', justifyContent:'center', marginTop:10}}>
+                <button className="btn btn-secondary btn-sm" style={{display:'flex', alignItems:'center', gap:4}} onClick={() => setShowAllTxns(o => !o)}>
+                  {showAllTxns ? (
+                    <>Show Less <span style={{fontSize:10}}>▲</span></>
+                  ) : (
+                    <>Show All ({entries.length}) <span style={{fontSize:10}}>▼</span></>
+                  )}
+                </button>
+              </div>
+            )}
+            </>}
           </div>}
         </div>);
       })}</div>
@@ -1662,8 +1704,9 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
 // ── EXPENSES — money out of Cash reserve ─────────────────────────────────────
 function Expenses({ data, derived, onRefresh }) {
   const [saving, setSaving] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
   const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
-  const [form, setForm] = useState({ date: todayStr(), reserve:'Cash', amount:'', subtype:'', notes:'' });
+  const [form, setForm] = useState({ date: todayStr(), reserve: 'Cash', amount: '', subtype: '', notes: '' });
   const f = (k,v)=>setForm(p=>({...p,[k]:v}));
   const expenses = data.entries.filter(e => isCash(e.Reserve) && e.Direction==='Out' && e.Category==='Expense')
     .sort((a,b)=>(b.Date||'').localeCompare(a.Date||''));
@@ -1672,10 +1715,29 @@ function Expenses({ data, derived, onRefresh }) {
     if (num(form.amount)<=0) { alert('Enter the amount.'); return; }
     setSaving(true);
     try {
-      await addEntry(uid('EX'), form.date, { reserve:form.reserve, subtype:form.subtype, direction:'Out', qty:num(form.amount), value:num(form.amount), category:'Expense', notes:form.notes });
-      setForm({ date: todayStr(), reserve:form.reserve, amount:'', subtype:'', notes:'' }); onRefresh();
+      if (editingExpense) {
+        await updateRow('Entries', editingExpense._row, rowValues('Entries', {
+          ...editingExpense,
+          Date: form.date,
+          Reserve: form.reserve,
+          Subtype: form.subtype,
+          Qty: num(form.amount),
+          Value: num(form.amount),
+          Notes: form.notes
+        }));
+        setEditingExpense(null);
+      } else {
+        await addEntry(uid('EX'), form.date, { reserve:form.reserve, subtype:form.subtype, direction:'Out', qty:num(form.amount), value:num(form.amount), category:'Expense', notes:form.notes });
+      }
+      setForm({ date: todayStr(), reserve: form.reserve, amount: '', subtype: '', notes: '' });
+      onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
+  };
+
+  const handleCancel = () => {
+    setEditingExpense(null);
+    setForm({ date: todayStr(), reserve: 'Cash', amount: '', subtype: '', notes: '' });
   };
 
   return (
@@ -1686,7 +1748,7 @@ function Expenses({ data, derived, onRefresh }) {
         <div className="stat-card"><div className="stat-label">Total Expenses Logged</div><div className="stat-value gold">{fmtINR(expenses.reduce((s,e)=>s+num(e.Qty),0))}</div><div className="stat-sub">{expenses.length} entries</div></div>
       </div>
       <div className="card" style={{marginBottom:16}}>
-        <div className="card-title">Record an Expense</div>
+        <div className="card-title">{editingExpense ? 'Edit Expense' : 'Record an Expense'}</div>
         <div className="form-grid">
           <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={e=>f('date',e.target.value)}/></div>
           <div className="form-group"><label>Paid From</label><select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{cashNames.map(n=><option key={n} value={n}>{n} ({fmtINR(derived.balOf(n))})</option>)}</select></div>
@@ -1695,16 +1757,41 @@ function Expenses({ data, derived, onRefresh }) {
           <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>f('notes',e.target.value)}/></div>
         </div>
         <div className="btn-row">
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:'Save Expense'}</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?<span className="spinner"/>:editingExpense?'Update Expense':'Save Expense'}</button>
+          {editingExpense && <button className="btn btn-secondary" onClick={handleCancel}>Cancel</button>}
         </div>
       </div>
       <div className="card">
         <div className="card-title">Recent Expenses</div>
         {expenses.length===0 ? <div className="empty"><p>No expenses recorded yet.</p></div> :
         <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Paid From</th><th>Category</th><th>Amount</th><th>Notes</th></tr></thead>
+          <thead><tr><th>Date</th><th>Paid From</th><th>Category</th><th>Amount</th><th>Notes</th><th style={{width: 90}}></th></tr></thead>
           <tbody>{expenses.slice(0,100).map(e=>(
-            <tr key={e.ID}><td className="mono">{e.Date}</td><td>{e.Reserve}</td><td>{e.Subtype||'—'}</td><td className="mono" style={{color:'var(--red)'}}>−{fmtINR(e.Qty)}</td><td style={{fontSize:12}}>{e.Notes||'—'}</td></tr>
+            <tr key={e.ID}>
+              <td className="mono">{e.Date}</td>
+              <td>{e.Reserve}</td>
+              <td>{e.Subtype||'—'}</td>
+              <td className="mono" style={{color:'var(--red)'}}>−{fmtINR(e.Qty)}</td>
+              <td style={{fontSize:12}}>{e.Notes||'—'}</td>
+              <td>
+                <div style={{display:'flex', gap: 6}}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => {
+                    setForm({ date: e.Date, reserve: e.Reserve, amount: e.Qty, subtype: e.Subtype||'', notes: e.Notes||'' });
+                    setEditingExpense(e);
+                  }} title="Edit Expense">✏️</button>
+                  <button className="btn btn-danger btn-sm" onClick={async () => {
+                    if (window.confirm('Delete this expense entry?')) {
+                      setSaving(true);
+                      try {
+                        await deleteRow('Entries', e._row);
+                        onRefresh();
+                      } catch(err) { alert('Error: ' + err.message); }
+                      setSaving(false);
+                    }
+                  }} title="Delete Expense">🗑️</button>
+                </div>
+              </td>
+            </tr>
           ))}</tbody>
         </table></div>}
       </div>
@@ -2804,32 +2891,90 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
 }
 
 
-function Tenants({ data, onRefresh }) {
+function Tenants({ data, derived, onRefresh }) {
   const [mode, setMode]     = useState(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab]       = useState('active');
-  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'' };
+  const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
+  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'', advanceReserve: cashNames[0] || 'Cash' };
   const [form, setForm]     = useState(blank);
   const f = (k,v) => setForm(p => ({...p,[k]:v}));
 
   const openAdd  = () => { setForm(blank); setMode('add'); };
-  const openEdit = (t) => { setForm({...blank,...t}); setMode({editing:t._row, id:t.ID}); };
+  const openEdit = (t) => {
+    const existingEntry = data.entries.find(e => e['Txn ID'] === 'ADV-' + t.ID);
+    setForm({
+      ...blank,
+      ...t,
+      advanceReserve: existingEntry ? existingEntry.Reserve : (cashNames[0] || 'Cash')
+    });
+    setMode({editing:t._row, id:t.ID});
+  };
 
   const handleSave = async (withReceipt = false) => {
     if (!form['Property ID'] || !form.Name || !form.Phone) { alert('Property, name and phone required.'); return; }
     setSaving(true);
     try {
+      const advAmt = num(form.Advance);
+      const advRes = form.advanceReserve || cashNames[0] || 'Cash';
+
       if (mode === 'add') {
+        const tenantId = `T${Date.now()}`;
         // vacate existing active tenant for this property
         for (const t of data.tenants.filter(t => t['Property ID'] === form['Property ID'] && t.Status === 'Active')) {
           await updateRow('Tenants', t._row, [t.ID, t['Property ID'], t.Name, t.Phone, t.Email, t.Advance, t['Move In Date'], 'Vacated', t.Notes, t['Last Rent Revision']||''], 10);
         }
-        await appendRow('Tenants', [`T${Date.now()}`, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', 'Active', form.Notes||'', form['Last Rent Revision']||'']);
+        await appendRow('Tenants', [tenantId, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', 'Active', form.Notes||'', form['Last Rent Revision']||'']);
         // mark property occupied
         const prop = data.properties.find(p => p.ID === form['Property ID']);
         if (prop) await updateRow('Properties', prop._row, [prop.ID, prop.Name, prop.Address, prop.Type, prop['Rent Amount'], 'Occupied', prop.Notes, prop.Created||''], 8);
+        
+        // credit advance to reserve if entered
+        if (advAmt > 0) {
+          const advDate = form['Move In Date'] || todayStr();
+          await addEntry('ADV-' + tenantId, advDate, {
+            reserve: advRes,
+            direction: 'In',
+            qty: advAmt,
+            value: advAmt,
+            counterparty: form.Name,
+            category: 'Rent',
+            ref: tenantId,
+            notes: `Advance for ${form.Name}`
+          });
+        }
       } else {
         await updateRow('Tenants', mode.editing, [mode.id, form['Property ID'], form.Name, form.Phone, form.Email||'', form.Advance||'', form['Move In Date']||'', form.Status||'Active', form.Notes||'', form['Last Rent Revision']||''], 10);
+        
+        // handle advance updates on edit
+        const existingEntry = data.entries.find(e => e['Txn ID'] === 'ADV-' + mode.id);
+        if (advAmt > 0) {
+          if (existingEntry) {
+            await updateRow('Entries', existingEntry._row, rowValues('Entries', {
+              ...existingEntry,
+              Date: form['Move In Date'] || todayStr(),
+              Reserve: advRes,
+              Qty: advAmt,
+              Value: advAmt,
+              Counterparty: form.Name,
+              Notes: `Advance for ${form.Name}`
+            }));
+          } else {
+            const advDate = form['Move In Date'] || todayStr();
+            await addEntry('ADV-' + mode.id, advDate, {
+              reserve: advRes,
+              direction: 'In',
+              qty: advAmt,
+              value: advAmt,
+              counterparty: form.Name,
+              category: 'Rent',
+              ref: mode.id,
+              notes: `Advance for ${form.Name}`
+            });
+          }
+        } else if (existingEntry) {
+          await deleteRow('Entries', existingEntry._row);
+        }
       }
       setMode(null); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
@@ -2860,6 +3005,13 @@ function Tenants({ data, onRefresh }) {
             <div className="form-group"><label>Phone *</label><input placeholder="9876543210" value={form.Phone} onChange={e=>f('Phone',e.target.value)}/></div>
             <div className="form-group"><label>Email</label><input placeholder="email@example.com" value={form.Email} onChange={e=>f('Email',e.target.value)}/></div>
             <div className="form-group"><label>Advance (₹)</label><input type="number" placeholder="50000" value={form.Advance} onChange={e=>f('Advance',e.target.value)}/></div>
+            {num(form.Advance) > 0 && (
+              <div className="form-group"><label>Credit Advance To</label>
+                <select value={form.advanceReserve} onChange={e=>f('advanceReserve',e.target.value)}>
+                  {cashNames.map(n=><option key={n} value={n}>{n} ({fmtINR(derived.balOf(n))})</option>)}
+                </select>
+              </div>
+            )}
             <div className="form-group"><label>Move-in Date</label><input type="date" value={form['Move In Date']} onChange={e=>f('Move In Date',e.target.value)}/></div>
             <div className="form-group"><label>Last Rent Revision Date</label><input type="date" value={form['Last Rent Revision']} onChange={e=>f('Last Rent Revision',e.target.value)}/></div>
             {mode!=='add' && <div className="form-group"><label>Status</label>
@@ -4284,12 +4436,12 @@ function App() {
       case 'dashboard': return <Dashboard data={data} derived={derived} onNav={setPage} onRefresh={loadData}/>;
       case 'reserves': return <ReservesPage data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}}/>;
       case 'convert': return <Convert key={editTxn?editTxn.txnId:'new'} data={data} derived={derived} edit={editTxn} onRefresh={loadData} onDone={()=>{setEditTxn(null);setPage(editTxn?'transactions':'reserves');}}/>;
-      case 'transactions': return <Transactions data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}} onEdit={(g)=>{setEditTxn(g);setPage('convert');}}/>;
+      case 'transactions': return <Transactions data={data} derived={derived} onRefresh={loadData} onNew={()=>{setEditTxn(null);setPage('convert');}} onEdit={(g)=>{setEditTxn(g);setPage('convert');}} onNav={setPage}/>;
       case 'lending': return <Lending data={data} derived={derived} onRefresh={loadData}/>;
       case 'expenses': return <Expenses data={data} derived={derived} onRefresh={loadData}/>;
       case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
       case 'properties': return <Properties data={data} onRefresh={loadData} onGoToRent={(propId)=>{ setRentTarget(propId); setPage('rent'); }}/>;
-      case 'tenants': return <Tenants data={data} onRefresh={loadData}/>;
+      case 'tenants': return <Tenants data={data} derived={derived} onRefresh={loadData}/>;
       case 'rent': return <Rent data={data} derived={derived} onRefresh={loadData} initialPropId={rentTarget} onClearTarget={()=>setRentTarget(null)}/>;
       case 'maintenance': return <Maintenance data={data} derived={derived} onRefresh={loadData}/>;
       case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
