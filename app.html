@@ -2896,7 +2896,7 @@ function Tenants({ data, derived, onRefresh }) {
   const [saving, setSaving] = useState(false);
   const [tab, setTab]       = useState('active');
   const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
-  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'', advanceReserve: cashNames[0] || 'Cash' };
+  const blank = { 'Property ID':'', Name:'', Phone:'', Email:'', Advance:'', 'Move In Date':'', 'Last Rent Revision':'', Notes:'', advanceReserve: '' };
   const [form, setForm]     = useState(blank);
   const f = (k,v) => setForm(p => ({...p,[k]:v}));
 
@@ -2906,7 +2906,7 @@ function Tenants({ data, derived, onRefresh }) {
     setForm({
       ...blank,
       ...t,
-      advanceReserve: existingEntry ? existingEntry.Reserve : (cashNames[0] || 'Cash')
+      advanceReserve: existingEntry ? existingEntry.Reserve : ''
     });
     setMode({editing:t._row, id:t.ID});
   };
@@ -2916,7 +2916,7 @@ function Tenants({ data, derived, onRefresh }) {
     setSaving(true);
     try {
       const advAmt = num(form.Advance);
-      const advRes = form.advanceReserve || cashNames[0] || 'Cash';
+      const advRes = form.advanceReserve || '';
 
       if (mode === 'add') {
         const tenantId = `T${Date.now()}`;
@@ -2929,8 +2929,8 @@ function Tenants({ data, derived, onRefresh }) {
         const prop = data.properties.find(p => p.ID === form['Property ID']);
         if (prop) await updateRow('Properties', prop._row, [prop.ID, prop.Name, prop.Address, prop.Type, prop['Rent Amount'], 'Occupied', prop.Notes, prop.Created||''], 8);
         
-        // credit advance to reserve if entered
-        if (advAmt > 0) {
+        // credit advance to reserve if entered and reserve selected
+        if (advAmt > 0 && advRes) {
           const advDate = form['Move In Date'] || todayStr();
           await addEntry('ADV-' + tenantId, advDate, {
             reserve: advRes,
@@ -2948,7 +2948,7 @@ function Tenants({ data, derived, onRefresh }) {
         
         // handle advance updates on edit
         const existingEntry = data.entries.find(e => e['Txn ID'] === 'ADV-' + mode.id);
-        if (advAmt > 0) {
+        if (advAmt > 0 && advRes) {
           if (existingEntry) {
             await updateRow('Entries', existingEntry._row, rowValues('Entries', {
               ...existingEntry,
@@ -3008,6 +3008,7 @@ function Tenants({ data, derived, onRefresh }) {
             {num(form.Advance) > 0 && (
               <div className="form-group"><label>Credit Advance To</label>
                 <select value={form.advanceReserve} onChange={e=>f('advanceReserve',e.target.value)}>
+                  <option value="">Do not credit / Unaccounted</option>
                   {cashNames.map(n=><option key={n} value={n}>{n} ({fmtINR(derived.balOf(n))})</option>)}
                 </select>
               </div>
