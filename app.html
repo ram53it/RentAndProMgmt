@@ -1997,10 +1997,20 @@ function Lending({ data, derived, onRefresh }) {
 function LendCard({ l, data, derived, onRefresh, onEdit }) {
   const [open, setOpen] = useState(false);
   const [showPay, setShowPay] = useState(false);
+  const [showAddLend, setShowAddLend] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingPay, setEditingPay] = useState(null);
+
+  const cashNames = (derived?.reserves || []).filter(r => r.kind === 'Cash').map(r => r.name);
   const [pay, setPay] = useState({ date: todayStr(), mode: 'Cash', reserve: 'Cash', amount: '', weight: '', notes: '' });
+  const [addLendForm, setAddLendForm] = useState({ date: todayStr(), type: l.Type, reserve: lendReserveOptions(l.Type, cashNames)[0], amount: '', weight: '', notes: '' });
+
   const payments = data.payments.filter(p=>p['Ref Type']==='Lending' && p['Ref ID']===l.ID);
+  
+  // Find initial ledger entry for this lending
+  const initialEntry = data.entries.find(e => e['Txn ID'] === l.ID && e.Category === 'Lending');
+  const additionalLends = data.entries.filter(e => (e['Txn ID'] === l.ID || e.Ref === l.ID) && e.Direction === 'Out' && e._row !== initialEntry?._row);
+  
   const overdue = l['Due Date'] && l.outstanding>.5 && l['Due Date'] < todayStr();
 
   const handlePay = async () => {
@@ -2043,7 +2053,6 @@ function LendCard({ l, data, derived, onRefresh, onEdit }) {
           'Weight Grams': metalReturn ? pay.weight : '', Touch: '', Margin: '', Value: amt, Category: 'Lending Return', Ref: editingPay.ID, Counterparty: l.Person, Notes: `From ${l.Person} (${pay.mode})`
         }));
       }
-      // Recalculate status of lending record
       const otherPaid = payments.filter(p => p.ID !== editingPay.ID).reduce((s, p) => s + num(p.Amount), 0);
       const newTotalPaid = otherPaid + amt;
       const newOutstanding = num(l.Amount) - newTotalPaid;
@@ -2056,6 +2065,52 @@ function LendCard({ l, data, derived, onRefresh, onEdit }) {
       setPay({ date: todayStr(), mode: 'Cash', reserve: 'Cash', amount: '', weight: '', notes: '' });
       onRefresh();
     } catch(e) { alert('Error: '+e.message); }
+    setSaving(false);
+  };
+
+  const handleAddLend = async () => {
+    const amt = num(addLendForm.amount);
+    if (amt <= 0) { alert('Enter the ₹ value given.'); return; }
+    const isMetal = addLendForm.type === 'Gold' || addLendForm.type === 'Silver';
+    if (isMetal && num(addLendForm.weight) <= 0) { alert('Enter the weight given.'); return; }
+
+    const qty = isMetal ? num(addLendForm.weight) : amt;
+    const bal = derived.balOf(addLendForm.reserve);
+    if (qty > bal + (isCash(addLendForm.reserve) ? 0.5 : 0.001)) {
+      alert(`"${addLendForm.reserve}" has only ${fmtReserve(addLendForm.reserve, bal)} — cannot lend ${fmtReserve(addLendForm.reserve, qty)}.`);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await addEntry(l.ID, addLendForm.date, {
+        reserve: addLendForm.reserve,
+        direction: 'Out',
+        qty,
+        weight: isMetal ? addLendForm.weight : '',
+        value: amt,
+        category: 'Lending',
+        ref: l.ID,
+        counterparty: l.Person,
+        notes: addLendForm.notes ? `Additional lending: ${addLendForm.notes}` : `Additional lending to ${l.Person}`
+      });
+
+      const newTotalAmount = num(l.Amount) + amt;
+      const newTotalWeight = l.Type === 'Cash' ? '' : (num(l['Weight Grams']) + num(addLendForm.weight || 0));
+
+      if (l._row) {
+        await updateRow('Lending', l._row, rowValues('Lending', {
+          ...l,
+          Amount: newTotalAmount,
+          'Weight Grams': newTotalWeight,
+          Status: 'Open'
+        }));
+      }
+
+      setShowAddLend(false);
+      setAddLendForm({ date: todayStr(), type: l.Type, reserve: lendReserveOptions(l.Type, cashNames)[0], amount: '', weight: '', notes: '' });
+      onRefresh();
+    } catch(e) { alert('Error: ' + e.message); }
     setSaving(false);
   };
 
@@ -2080,80 +2135,170 @@ function LendCard({ l, data, derived, onRefresh, onEdit }) {
       {open && <div style={{borderTop:'1px solid var(--border)',padding:'14px 18px'}}>
         {l.Notes && <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:10}}>📝 {l.Notes}</div>}
         <div style={{display:'flex',gap:18,flexWrap:'wrap',marginBottom:12,fontSize:12,color:'var(--text-secondary)'}}>
-          <span>Principal: <b className="mono">{fmtINR(l.Amount)}</b></span>
+          <span>Total Given (Principal): <b className="mono">{fmtINR(l.Amount)}</b></span>
           <span>Returned so far: <b className="mono" style={{color:'var(--green)'}}>{fmtINR(l.paid)}</b></span>
           <span>Outstanding: <b className="mono" style={{color:l.outstanding>.5?'var(--gold)':'var(--green)'}}>{fmtINR(Math.max(0,l.outstanding))}</b></span>
         </div>
-        {payments.length>0 && <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Mode</th><th>Value</th><th>Weight</th><th>Notes</th><th></th></tr></thead>
-          <tbody>{payments.map(p=>{
-            return (
-              <tr key={p.ID}>
-                <td className="mono">{p.Date}</td>
-                <td>{p.Mode}</td>
-                <td className="mono">{fmtINR(p.Amount)}</td>
-                <td className="mono">{p['Weight Grams']?fmtG(p['Weight Grams']):'—'}</td>
-                <td>{p.Notes||'—'}</td>
-                <td>
-                  <button className="btn btn-secondary btn-sm" onClick={()=>{
-                    setEditingPay(p);
-                    const entry = data.entries.find(e => e.Category === 'Lending Return' && (e.Ref === p.ID || (e['Txn ID'] === l.ID && num(e.Qty) === num(p.Amount))));
-                    setPay({
-                      date: p.Date,
-                      mode: p.Mode,
-                      reserve: entry ? entry.Reserve : 'Cash',
-                      amount: p.Amount,
-                      weight: p['Weight Grams'] || '',
-                      notes: p.Notes || ''
-                    });
-                    setShowPay(true);
-                  }} title="Edit Repayment">✏️</button>
-                </td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>}
-        {l.outstanding>.5 && <div style={{marginTop:12}}>
-          {!showPay
-            ? <button className="btn btn-primary btn-sm" onClick={()=>{setEditingPay(null); setShowPay(true);}}>💰 Record Return / Installment</button>
-            : <div className="settle-box">
-                <div className="form-grid">
-                  <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
-                  <div className="form-group"><label>Returned As</label>
-                    <select value={pay.mode} onChange={e=>{
-                      const val = e.target.value;
-                      let defRes = 'Cash';
-                      if (val==='Gold') defRes = 'Old Gold';
-                      else if (val==='Silver') defRes = 'Old Silver';
-                      setPay(p=>({...p,mode:val,reserve:defRes}));
-                    }}>
-                      <option>Cash</option>
-                      <option>UPI</option>
-                      <option>Gold</option>
-                      <option>Silver</option>
-                    </select>
-                  </div>
-                  <div className="form-group"><label>Received Into</label>
-                    <select value={pay.reserve} onChange={e=>setPay(p=>({...p,reserve:e.target.value}))}>
-                      {pay.mode === 'Gold' ? (
-                        derived.reserves.filter(r => r.kind === 'Gold').map(r => <option key={r.name} value={r.name}>{r.name}</option>)
-                      ) : pay.mode === 'Silver' ? (
-                        derived.reserves.filter(r => r.kind === 'Silver').map(r => <option key={r.name} value={r.name}>{r.name}</option>)
-                      ) : (
-                        derived.reserves.filter(r => r.kind === 'Cash').map(r => <option key={r.name} value={r.name}>{r.name}</option>)
-                      )}
-                    </select>
-                  </div>
-                  <div className="form-group"><label>Value (₹) — {fmtINR(l.outstanding)} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
-                  {(pay.mode==='Gold'||pay.mode==='Silver') && <div className="form-group"><label>Weight (g) — into {pay.reserve}</label><input type="number" step="0.001" value={pay.weight} onChange={e=>setPay(p=>({...p,weight:e.target.value}))}/></div>}
-                  <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
+
+        {/* Additional Lending entries history */}
+        {additionalLends.length > 0 && (
+          <div style={{marginBottom: 14}}>
+            <div style={{fontSize: 12, fontWeight: 600, color: 'var(--gold)', marginBottom: 6}}>➕ Additional Lending / Top-Ups Given:</div>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Date</th><th>Paid From</th><th>Value</th><th>Weight</th><th>Notes</th><th style={{width: 40}}></th></tr></thead>
+                <tbody>
+                  {additionalLends.map(e => (
+                    <tr key={e.ID}>
+                      <td className="mono">{e.Date}</td>
+                      <td>{e.Reserve}</td>
+                      <td className="mono" style={{color:'var(--gold)'}}>+{fmtINR(e.Value)}</td>
+                      <td className="mono">{e['Weight Grams'] ? fmtG(e['Weight Grams']) : '—'}</td>
+                      <td style={{fontSize: 12}}>{e.Notes || '—'}</td>
+                      <td>
+                        <button className="btn btn-danger btn-sm" onClick={async () => {
+                          if (window.confirm('Delete this additional lending entry?')) {
+                            setSaving(true);
+                            try {
+                              await deleteRow('Entries', e._row);
+                              const newTotalAmount = Math.max(0, num(l.Amount) - num(e.Value));
+                              const newTotalWeight = l.Type === 'Cash' ? '' : Math.max(0, num(l['Weight Grams']) - num(e.Qty));
+                              if (l._row) {
+                                await updateRow('Lending', l._row, rowValues('Lending', { ...l, Amount: newTotalAmount, 'Weight Grams': newTotalWeight }));
+                              }
+                              onRefresh();
+                            } catch(err) { alert('Error: ' + err.message); }
+                            setSaving(false);
+                          }
+                        }} title="Delete Additional Lending">🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Repayments history */}
+        {payments.length>0 && (
+          <div style={{marginBottom: 12}}>
+            <div style={{fontSize: 12, fontWeight: 600, color: 'var(--green)', marginBottom: 6}}>💰 Repayments Received:</div>
+            <div className="table-wrap"><table>
+              <thead><tr><th>Date</th><th>Mode</th><th>Value</th><th>Weight</th><th>Notes</th><th></th></tr></thead>
+              <tbody>{payments.map(p=>{
+                return (
+                  <tr key={p.ID}>
+                    <td className="mono">{p.Date}</td>
+                    <td>{p.Mode}</td>
+                    <td className="mono">{fmtINR(p.Amount)}</td>
+                    <td className="mono">{p['Weight Grams']?fmtG(p['Weight Grams']):'—'}</td>
+                    <td>{p.Notes||'—'}</td>
+                    <td>
+                      <button className="btn btn-secondary btn-sm" onClick={()=>{
+                        setEditingPay(p);
+                        const entry = data.entries.find(e => e.Category === 'Lending Return' && (e.Ref === p.ID || (e['Txn ID'] === l.ID && num(e.Qty) === num(p.Amount))));
+                        setPay({
+                          date: p.Date,
+                          mode: p.Mode,
+                          reserve: entry ? entry.Reserve : 'Cash',
+                          amount: p.Amount,
+                          weight: p['Weight Grams'] || '',
+                          notes: p.Notes || ''
+                        });
+                        setShowPay(true);
+                        setShowAddLend(false);
+                      }} title="Edit Repayment">✏️</button>
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>
+          </div>
+        )}
+
+        <div style={{marginTop:12, display: 'flex', gap: 10, flexWrap: 'wrap'}}>
+          {!showPay && !showAddLend && (
+            <>
+              {l.outstanding > 0.5 && (
+                <button className="btn btn-primary btn-sm" onClick={()=>{setEditingPay(null); setShowPay(true); setShowAddLend(false);}}>💰 Record Return / Installment</button>
+              )}
+              <button className="btn btn-secondary btn-sm" onClick={()=>{setShowAddLend(true); setShowPay(false);}}>➕ Record Additional Lending</button>
+            </>
+          )}
+
+          {showPay && (
+            <div className="settle-box" style={{width: '100%'}}>
+              <div style={{fontWeight: 600, fontSize: 13, color: 'var(--green)', marginBottom: 10}}>💰 Record Repayment / Installment</div>
+              <div className="form-grid">
+                <div className="form-group"><label>Date</label><input type="date" value={pay.date} onChange={e=>setPay(p=>({...p,date:e.target.value}))}/></div>
+                <div className="form-group"><label>Returned As</label>
+                  <select value={pay.mode} onChange={e=>{
+                    const val = e.target.value;
+                    let defRes = 'Cash';
+                    if (val==='Gold') defRes = 'Old Gold';
+                    else if (val==='Silver') defRes = 'Old Silver';
+                    setPay(p=>({...p,mode:val,reserve:defRes}));
+                  }}>
+                    <option>Cash</option>
+                    <option>UPI</option>
+                    <option>Gold</option>
+                    <option>Silver</option>
+                  </select>
                 </div>
-                <div className="btn-row">
-                  <button className="btn btn-primary btn-sm" onClick={editingPay ? handleUpdatePay : handlePay} disabled={saving}>{saving?<span className="spinner"/>:editingPay?'Update':'Save'}</button>
-                  <button className="btn btn-secondary btn-sm" onClick={()=>{setShowPay(false); setEditingPay(null); setPay({ date: todayStr(), mode:'Cash', reserve:'Cash', amount:'', weight:'', notes:'' });}}>Cancel</button>
+                <div className="form-group"><label>Received Into</label>
+                  <select value={pay.reserve} onChange={e=>setPay(p=>({...p,reserve:e.target.value}))}>
+                    {pay.mode === 'Gold' ? (
+                      derived.reserves.filter(r => r.kind === 'Gold').map(r => <option key={r.name} value={r.name}>{r.name}</option>)
+                    ) : pay.mode === 'Silver' ? (
+                      derived.reserves.filter(r => r.kind === 'Silver').map(r => <option key={r.name} value={r.name}>{r.name}</option>)
+                    ) : (
+                      derived.reserves.filter(r => r.kind === 'Cash').map(r => <option key={r.name} value={r.name}>{r.name}</option>)
+                    )}
+                  </select>
                 </div>
-              </div>}
-        </div>}
+                <div className="form-group"><label>Value (₹) — {fmtINR(l.outstanding)} pending</label><input type="number" value={pay.amount} onChange={e=>setPay(p=>({...p,amount:e.target.value}))}/></div>
+                {(pay.mode==='Gold'||pay.mode==='Silver') && <div className="form-group"><label>Weight (g) — into {pay.reserve}</label><input type="number" step="0.001" value={pay.weight} onChange={e=>setPay(p=>({...p,weight:e.target.value}))}/></div>}
+                <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={pay.notes} onChange={e=>setPay(p=>({...p,notes:e.target.value}))}/></div>
+              </div>
+              <div className="btn-row">
+                <button className="btn btn-primary btn-sm" onClick={editingPay ? handleUpdatePay : handlePay} disabled={saving}>{saving?<span className="spinner"/>:editingPay?'Update':'Save'}</button>
+                <button className="btn btn-secondary btn-sm" onClick={()=>{setShowPay(false); setEditingPay(null); setPay({ date: todayStr(), mode:'Cash', reserve:'Cash', amount:'', weight:'', notes:'' });}}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {showAddLend && (
+            <div className="settle-box" style={{width: '100%', border: '1px solid rgba(245,158,11,.3)'}}>
+              <div style={{fontWeight: 600, fontSize: 13, color: 'var(--gold)', marginBottom: 10}}>➕ Record Additional Lending / Top-Up</div>
+              <div className="form-grid">
+                <div className="form-group"><label>Date</label><input type="date" value={addLendForm.date} onChange={e => setAddLendForm(p => ({ ...p, date: e.target.value }))}/></div>
+                <div className="form-group"><label>What Given</label>
+                  <select value={addLendForm.type} onChange={e => {
+                    const val = e.target.value;
+                    setAddLendForm(p => ({ ...p, type: val, reserve: lendReserveOptions(val, cashNames)[0] }));
+                  }}>
+                    <option>Cash</option><option>Gold</option><option>Silver</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>From Reserve <span style={{color: 'var(--text-muted)'}}>{fmtReserve(addLendForm.reserve, derived.balOf(addLendForm.reserve))} avail</span></label>
+                  <select value={addLendForm.reserve} onChange={e => setAddLendForm(p => ({ ...p, reserve: e.target.value }))}>
+                    {lendReserveOptions(addLendForm.type, cashNames).map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                {addLendForm.type !== 'Cash' && (
+                  <div className="form-group"><label>Weight (g) *</label><input type="number" step="0.001" value={addLendForm.weight} onChange={e => setAddLendForm(p => ({ ...p, weight: e.target.value }))}/></div>
+                )}
+                <div className="form-group"><label>Additional Value (₹) *</label><input type="number" placeholder="Principal amount" value={addLendForm.amount} onChange={e => setAddLendForm(p => ({ ...p, amount: e.target.value }))}/></div>
+                <div className="form-group" style={{gridColumn: '1/-1'}}><label>Notes</label><input placeholder="Reason / notes..." value={addLendForm.notes} onChange={e => setAddLendForm(p => ({ ...p, notes: e.target.value }))}/></div>
+              </div>
+              <div className="btn-row">
+                <button className="btn btn-primary btn-sm" onClick={handleAddLend} disabled={saving}>{saving ? <span className="spinner"/> : 'Save Additional Lending'}</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowAddLend(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>}
     </div>
   );
@@ -2998,7 +3143,7 @@ function Tenants({ data, derived, onRefresh }) {
             <div className="form-group"><label>Property *</label>
               <select value={form['Property ID']} onChange={e=>f('Property ID',e.target.value)}>
                 <option value="">Select property</option>
-                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+                {data.properties.filter(p=>(p.Type||'').toLowerCase()!=='land').map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
             <div className="form-group"><label>Tenant Name *</label><input placeholder="Full name" value={form.Name} onChange={e=>f('Name',e.target.value)}/></div>
@@ -3364,7 +3509,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
   const paidSums = {};
   filtered.filter(r=>r.Status==='Paid'||r.Status==='Partial').forEach(r=>{ paidSums[r['Property ID']] = (paidSums[r['Property ID']]||0) + Number(r.Amount||0); });
   const notPaid = data.properties
-    .filter(p=>p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage')
+    .filter(p=>p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage'&&(p.Type||'').toLowerCase()!=='land')
     .map(p=>{
       const due = Number(p['Rent Amount']||0), got = paidSums[p.ID]||0;
       return { p, due, got, pending: Math.max(0, due-got),
@@ -3407,7 +3552,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
                 setForm(p=>({...p,'Property ID':e.target.value, perMonthAmount:amt, totalAmount:total2||''}));
               }}>
                 <option value="">Select property</option>
-                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+                {data.properties.filter(p=>(p.Type||'').toLowerCase()!=='land').map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
               {/* Tenant confirmation strip */}
               {form['Property ID'] && (()=>{
@@ -3523,7 +3668,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
             <div className="form-group"><label>Property *</label>
               <select value={editForm['Property ID']} onChange={e=>ef('Property ID',e.target.value)}>
                 <option value="">Select property</option>
-                {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+                {data.properties.filter(p=>(p.Type||'').toLowerCase()!=='land').map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
               </select>
             </div>
             <div className="form-group"><label>Month</label>
@@ -3650,7 +3795,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
           <select style={{background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-primary)',padding:'7px 12px',borderRadius:6,fontSize:13,minWidth:200}}
             value={filterProp} onChange={e=>setFilterProp(e.target.value)}>
             <option value="">— Select a property —</option>
-            {data.properties.map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
+            {data.properties.filter(p=>(p.Type||'').toLowerCase()!=='land').map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
           </select>
           {filterProp && (()=>{
             const _lp = data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
@@ -3848,6 +3993,255 @@ function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
           }
         </CollapsibleSection>
       </div>}
+    </div>
+  );
+}
+
+// ── CONSTRUCTION / LAND DEVELOPMENT ──────────────────────────────────────────
+function Construction({ data, derived, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+
+  const cashNames = (derived?.reserves || []).filter(r => r.kind === 'Cash').map(r => r.name);
+
+  const landProps = data.properties.filter(p => (p.Type || '').toLowerCase() === 'land');
+  const otherProps = data.properties.filter(p => (p.Type || '').toLowerCase() !== 'land');
+  const allConstructionProps = [...landProps, ...otherProps];
+
+  const categories = [
+    'Stone & Aggregates', 'Sand', 'Steel / TMT Bars', 'Borewell & Water',
+    'Labor & Wages', 'Bricks & Blocks', 'Cement', 'Tiles & Flooring',
+    'Plumbing & Sanitation', 'Electrical', 'Plan Approval & Legal',
+    'Architect & Design', 'Transport & Crane', 'Miscellaneous'
+  ];
+
+  const blankForm = {
+    date: todayStr(),
+    propertyId: landProps.length > 0 ? landProps[0].ID : (allConstructionProps[0]?.ID || ''),
+    category: 'Labor & Wages',
+    reserve: cashNames[0] || 'Cash',
+    amount: '',
+    vendor: '',
+    notes: ''
+  };
+
+  const [form, setForm] = useState(blankForm);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const constructionEntries = data.entries.filter(e => e.Category === 'Construction')
+    .sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+
+  const totalSpent = constructionEntries.reduce((s, e) => s + num(e.Qty), 0);
+
+  const handleSave = async () => {
+    if (!form.propertyId) { alert('Select a property / project.'); return; }
+    if (num(form.amount) <= 0) { alert('Enter a valid amount.'); return; }
+    if (!form.reserve) { alert('Select a reserve to pay from.'); return; }
+
+    const bal = derived.balOf(form.reserve);
+    if (num(form.amount) > bal + 0.5 && !editingExpense) {
+      if (!window.confirm(`Warning: "${form.reserve}" balance is ₹${fmtINR(bal)}, but expense is ₹${fmtINR(num(form.amount))}. Continue anyway?`)) return;
+    }
+
+    setSaving(true);
+    try {
+      const prop = data.properties.find(p => p.ID === form.propertyId);
+      const propName = prop ? prop.Name : form.propertyId;
+      const noteText = `[${form.category}] ${form.notes || ''} (${propName})`.trim();
+
+      if (editingExpense) {
+        await updateRow('Entries', editingExpense._row, rowValues('Entries', {
+          ...editingExpense,
+          Date: form.date,
+          Reserve: form.reserve,
+          Subtype: form.category,
+          Qty: num(form.amount),
+          Value: num(form.amount),
+          Counterparty: form.vendor,
+          Ref: form.propertyId,
+          Notes: noteText
+        }));
+        setEditingExpense(null);
+      } else {
+        await addEntry(uid('CS'), form.date, {
+          reserve: form.reserve,
+          subtype: form.category,
+          direction: 'Out',
+          qty: num(form.amount),
+          value: num(form.amount),
+          category: 'Construction',
+          ref: form.propertyId,
+          counterparty: form.vendor,
+          notes: noteText
+        });
+      }
+
+      setForm({ ...blankForm, propertyId: form.propertyId, reserve: form.reserve });
+      setShowForm(false);
+      onRefresh();
+    } catch(e) { alert('Error: ' + e.message); }
+    setSaving(false);
+  };
+
+  const openEdit = (e) => {
+    setEditingExpense(e);
+    setForm({
+      date: e.Date || todayStr(),
+      propertyId: e.Ref || (landProps[0]?.ID || ''),
+      category: e.Subtype || 'Labor & Wages',
+      reserve: e.Reserve || (cashNames[0] || 'Cash'),
+      amount: e.Qty || '',
+      vendor: e.Counterparty || '',
+      notes: (e.Notes || '').replace(/^\[.*?\]\s*/, '').replace(/\s*\([^)]*\)$/, '')
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (e) => {
+    if (window.confirm('Delete this construction expense entry?')) {
+      setSaving(true);
+      try {
+        await deleteRow('Entries', e._row);
+        onRefresh();
+      } catch(err) { alert('Error: ' + err.message); }
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="stats-row">
+        <div className="stat-card">
+          <div className="stat-label">🏗️ Total Construction Spent</div>
+          <div className="stat-value gold">{fmtINR(totalSpent)}</div>
+          <div className="stat-sub">{constructionEntries.length} logged expense items</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">📍 Land / Development Properties</div>
+          <div className="stat-value green">{landProps.length}</div>
+          <div className="stat-sub">{data.properties.length} total properties registered</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">💵 Available Reserves (Cash/Bank)</div>
+          <div className="stat-value green">{fmtINR(derived.cashBal + derived.bankTotal)}</div>
+          <div className="stat-sub">{cashNames.length} accounts available</div>
+        </div>
+      </div>
+
+      <div className="section-row">
+        <h3>Construction Expenses &amp; Land Projects</h3>
+        <button className="btn btn-primary" onClick={() => {
+          setEditingExpense(null);
+          setForm(blankForm);
+          setShowForm(o => !o);
+        }}>
+          <Icon name="plus" size={14}/> Record Construction Expense
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{marginBottom: 20}}>
+          <div className="card-title">{editingExpense ? 'Edit Construction Expense' : 'Record Construction Expense'}</div>
+          <div className="form-grid">
+            <div className="form-group"><label>Property / Project *</label>
+              <select value={form.propertyId} onChange={e => f('propertyId', e.target.value)}>
+                <option value="">Select Property / Land</option>
+                {landProps.length > 0 && <optgroup label="📍 Land Properties">
+                  {landProps.map(p => <option key={p.ID} value={p.ID}>📍 {p.Name} (Land)</option>)}
+                </optgroup>}
+                {otherProps.length > 0 && <optgroup label="🏢 Rental / Other Properties">
+                  {otherProps.map(p => <option key={p.ID} value={p.ID}>{p.Name} ({p.Type})</option>)}
+                </optgroup>}
+              </select>
+            </div>
+            <div className="form-group"><label>Expense Type / Stage *</label>
+              <select value={form.category} onChange={e => f('category', e.target.value)}>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Date *</label><input type="date" value={form.date} onChange={e => f('date', e.target.value)}/></div>
+            <div className="form-group"><label>Paid From Reserve *</label>
+              <select value={form.reserve} onChange={e => f('reserve', e.target.value)}>
+                {cashNames.map(n => <option key={n} value={n}>{n} ({fmtINR(derived.balOf(n))})</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Amount (₹) *</label><input type="number" placeholder="e.g. 50000" value={form.amount} onChange={e => f('amount', e.target.value)}/></div>
+            <div className="form-group"><label>Vendor / Contractor / Person</label><input placeholder="e.g. Sri Murugan Traders" value={form.vendor} onChange={e => f('vendor', e.target.value)}/></div>
+            <div className="form-group" style={{gridColumn: '1/-1'}}><label>Notes / Bill Ref</label><input placeholder="Bill no, vehicle details, quantity details..." value={form.notes} onChange={e => f('notes', e.target.value)}/></div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? <span className="spinner"/> : editingExpense ? 'Update Expense' : 'Save Expense'}
+            </button>
+            <button className="btn btn-secondary" onClick={() => { setShowForm(false); setEditingExpense(null); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Projects summary by Land / Property */}
+      {allConstructionProps.map(prop => {
+        const propEntries = constructionEntries.filter(e => e.Ref === prop.ID);
+        const propSpent = propEntries.reduce((s, e) => s + num(e.Qty), 0);
+        if (prop.Type !== 'Land' && propEntries.length === 0) return null;
+
+        return (
+          <div className="card" key={prop.ID} style={{marginBottom: 16}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12}}>
+              <div>
+                <div style={{fontWeight: 600, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8}}>
+                  {prop.Type === 'Land' ? '📍' : '🏢'} {prop.Name}
+                  <span className="badge badge-blue">{prop.Type}</span>
+                </div>
+                <div style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 2}}>{prop.Address || 'No address specified'}</div>
+              </div>
+              <div style={{textAlign: 'right'}}>
+                <div className="stat-label">Total Project Expense</div>
+                <div className="mono" style={{fontSize: 16, color: 'var(--gold)', fontWeight: 600}}>{fmtINR(propSpent)}</div>
+              </div>
+            </div>
+
+            {propEntries.length === 0 ? (
+              <div style={{fontSize: 12, color: 'var(--text-muted)', padding: '8px 0'}}>No construction expenses logged for this property yet.</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Date</th><th>Type</th><th>Paid From</th><th>Amount</th><th>Vendor</th><th>Notes</th><th style={{width: 80}}></th></tr>
+                  </thead>
+                  <tbody>
+                    {propEntries.map(e => (
+                      <tr key={e.ID}>
+                        <td className="mono">{e.Date}</td>
+                        <td><span className="badge badge-gold" style={{fontSize: 11}}>{e.Subtype || 'Construction'}</span></td>
+                        <td>{e.Reserve}</td>
+                        <td className="mono" style={{color: 'var(--red)'}}>−{fmtINR(e.Qty)}</td>
+                        <td>{e.Counterparty || '—'}</td>
+                        <td style={{fontSize: 12}}>{e.Notes || '—'}</td>
+                        <td>
+                          <div style={{display: 'flex', gap: 4}}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => openEdit(e)} title="Edit Expense">✏️</button>
+                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(e)} title="Delete Expense">🗑️</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {constructionEntries.length === 0 && (
+        <div className="card">
+          <div className="empty">
+            <p>No construction expenses recorded yet.</p>
+            <p style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 4}}>Click "Record Construction Expense" to log sand, steel, labor, and materials expenses deducted directly from your reserves.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4392,7 +4786,7 @@ function App() {
   const GROUPS = [
     { id:'homeG',  label:'Home',   emoji:'🏠', pages:[['home','🏠 Home'],['dashboard','⚡ Quick View']] },
     { id:'jewelG', label:'Jewel',  emoji:'💎', pages:[['reserves','Reserves'],['convert','New Txn'],['transactions','Transactions'],['lending','Lending'],['expenses','Expenses'],['stock','Stock']] },
-    { id:'rentG',  label:'Rent',   emoji:'🏢', pages:[['rent','Rent'],['properties','Properties'],['tenants','Tenants'],['maintenance','Maintenance'],['utilities','Utilities']] },
+    { id:'rentG',  label:'Rent',   emoji:'🏢', pages:[['rent','Rent'],['properties','Properties'],['tenants','Tenants'],['construction','Construction'],['maintenance','Maintenance'],['utilities','Utilities']] },
     { id:'investG',label:'Invest', emoji:'📈', pages:[['investments','Investments']] },
     { id:'moreG',  label:'More',   emoji:'⚙️', pages:[['reminders','Reminders'],['nlp','Ask AI'],['setup','Setup']] },
   ];
@@ -4411,6 +4805,7 @@ function App() {
     stock: ['Stock', 'Boxes & pockets — physical opening inventory'],
     properties: ['Properties', 'Your rental properties'],
     tenants: ['Tenants', 'Tenant details'],
+    construction: ['Construction Projects', 'Record construction & development expenses per property'],
     rent: ['Rent', 'Monthly rent — collect into a Cash/Bank reserve'],
     maintenance: ['Maintenance', 'Property expenses paid from a reserve'],
     utilities: ['Utilities', 'Electricity, tax & water numbers'],
@@ -4443,6 +4838,7 @@ function App() {
       case 'stock': return <Stock data={data} derived={derived} onRefresh={loadData}/>;
       case 'properties': return <Properties data={data} onRefresh={loadData} onGoToRent={(propId)=>{ setRentTarget(propId); setPage('rent'); }}/>;
       case 'tenants': return <Tenants data={data} derived={derived} onRefresh={loadData}/>;
+      case 'construction': return <Construction data={data} derived={derived} onRefresh={loadData}/>;
       case 'rent': return <Rent data={data} derived={derived} onRefresh={loadData} initialPropId={rentTarget} onClearTarget={()=>setRentTarget(null)}/>;
       case 'maintenance': return <Maintenance data={data} derived={derived} onRefresh={loadData}/>;
       case 'utilities': return <Utilities data={data} onRefresh={loadData}/>;
