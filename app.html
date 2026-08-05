@@ -3378,12 +3378,23 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
 
   // For edit — single month mode
-  const blankEdit = { 'Property ID':'', Month:curMonth, Year:curYear, Amount:'', 'Paid Date': new Date().toISOString().split('T')[0], Status:'Paid', paymentMethod:'Cash', Notes:'' };
+  const blankEdit = { 'Property ID':'', Month:curMonth, Year:curYear, Amount:'', 'Paid Date': new Date().toISOString().split('T')[0], Status:'Paid', paymentMethod:'Cash', receivedReserve:'Cash', Notes:'' };
   const [editForm, setEditForm] = useState(blankEdit);
   const ef = (k,v) => setEditForm(p=>({...p,[k]:v}));
 
   const openAdd  = () => { setForm(blank); setMode('add'); };
-  const openEdit = (r) => { setEditForm({...blankEdit,...r, paymentMethod: r.paymentMethod||'Cash'}); setMode({editing:r._row, id:r.ID}); };
+  const openEdit = (r) => {
+    const entry = data.entries.find(e => e['Txn ID'] === 'RENT-' + r.ID || (e.Category === 'Rent' && e.Ref === r.ID));
+    const res = r.Reserve || r['Received Reserve'] || (entry ? entry.Reserve : (cashReserves[0] || 'Cash'));
+    const pm = r['Payment Method'] || r.paymentMethod || (entry ? entry.Subtype : 'Cash');
+    setEditForm({
+      ...blankEdit,
+      ...r,
+      paymentMethod: pm,
+      receivedReserve: res
+    });
+    setMode({editing:r._row, id:r.ID});
+  };
 
   // Toggle month selection in grid
   const toggleMonth = (month, year) => {
@@ -3474,7 +3485,39 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
     setSaving(true);
     try {
       const tenant = data.tenants.find(t=>t['Property ID']===editForm['Property ID']&&t.Status==='Active');
-      await updateRow('Rent', mode.editing, [mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year, editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes, editForm.paymentMethod||'Cash'], 10);
+      const collecting = (editForm.Status==='Paid' || editForm.Status==='Partial') && num(editForm.Amount) > 0;
+      const resName = collecting ? (editForm.receivedReserve || cashReserves[0] || 'Cash') : '';
+      const pmName = editForm.paymentMethod || 'Cash';
+
+      await updateRow('Rent', mode.editing, [
+        mode.id, editForm['Property ID'], tenant?.ID||'', editForm.Month, editForm.Year,
+        editForm.Amount, editForm['Paid Date'], editForm.Status, editForm.Notes||'',
+        pmName, resName
+      ], 11);
+
+      const existingEntry = data.entries.find(e => e['Txn ID'] === 'RENT-' + mode.id || (e.Category === 'Rent' && e.Ref === mode.id));
+      if (collecting) {
+        if (existingEntry) {
+          await updateRow('Entries', existingEntry._row, rowValues('Entries', {
+            ...existingEntry,
+            Date: editForm['Paid Date'],
+            Reserve: resName,
+            Subtype: pmName,
+            Qty: num(editForm.Amount),
+            Value: num(editForm.Amount),
+            Counterparty: tenant?.Name || '',
+            Notes: `Rent ${editForm.Month} ${editForm.Year}`
+          }));
+        } else {
+          await addEntry('RENT-' + mode.id, editForm['Paid Date'], {
+            reserve: resName, direction: 'In', qty: num(editForm.Amount), value: num(editForm.Amount),
+            counterparty: tenant?.Name || '', category: 'Rent', ref: mode.id, notes: `Rent ${editForm.Month} ${editForm.Year}`
+          });
+        }
+      } else if (existingEntry) {
+        await deleteRow('Entries', existingEntry._row);
+      }
+
       setMode(null); onRefresh();
     } catch(e) { alert('Error: '+e.message); }
     setSaving(false);
@@ -3697,6 +3740,11 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
             <div className="form-group"><label>Payment Method</label>
               <select value={editForm.paymentMethod||'Cash'} onChange={e=>ef('paymentMethod',e.target.value)}>
                 <option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option>
+              </select>
+            </div>
+            <div className="form-group"><label>Received Into <span style={{color:'var(--text-muted)'}}>reserve</span></label>
+              <select value={editForm.receivedReserve||'Cash'} onChange={e=>ef('receivedReserve',e.target.value)}>
+                {cashReserves.map(n=><option key={n} value={n}>{n}</option>)}
               </select>
             </div>
             <div className="form-group"><label>Notes</label><input value={editForm.Notes} onChange={e=>ef('Notes',e.target.value)}/></div>
