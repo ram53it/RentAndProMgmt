@@ -422,39 +422,60 @@ const getSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_
 const setSession = (s) => { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); };
 const sessionValid = () => { const s = getSession(); return !!(s && s.token && s.expiresAt && Date.now() < s.expiresAt - 60000); };
 
-async function gatewayPost(payload) {
+async function gatewayPost(payload, retries = 3) {
   const cfg = getConfig();
   if (!cfg.gatewayUrl || !cfg.gatewaySecret) throw new Error('Gateway not configured — open Setup.');
-  try {
-    const res = await fetch(cfg.gatewayUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request → no CORS preflight
-      body: JSON.stringify({ secret: cfg.gatewaySecret, ...payload }),
-      redirect: 'follow',
-    });
-    if (res.status === 404) {
-      throw new Error(
-        'Apps Script Gateway returned 404 (Not Found).\n\n' +
-        'This occurs when the Google Apps Script Web App deployment version expired or access permissions changed.\n\n' +
-        'How to fix:\n' +
-        '1. Open Google Sheets → Extensions → Apps Script.\n' +
-        '2. Click Deploy → Manage deployments.\n' +
-        '3. Click Edit (pencil icon), select Version: "New version", ensure Who has access is set to "Anyone", and click Deploy.\n' +
-        '4. Copy the /exec URL and save it in Setup.'
-      );
+  
+  let lastErr = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const res = await fetch(cfg.gatewayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request → no CORS preflight
+        body: JSON.stringify({ secret: cfg.gatewaySecret, ...payload }),
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.status === 404) {
+        throw new Error(
+          'Apps Script Gateway returned 404 (Not Found).\n\n' +
+          'This occurs when the Google Apps Script Web App deployment version expired or access permissions changed.\n\n' +
+          'How to fix:\n' +
+          '1. Open Google Sheets → Extensions → Apps Script.\n' +
+          '2. Click Deploy → Manage deployments.\n' +
+          '3. Click Edit (pencil icon), select Version: "New version", ensure Who has access is set to "Anyone", and click Deploy.\n' +
+          '4. Copy the /exec URL and save it in Setup.'
+        );
+      }
+      if (!res.ok) throw new Error('Gateway HTTP ' + res.status);
+      const data = await res.json().catch(() => ({ ok: false, error: 'Bad gateway response' }));
+      if (data && data.service === 'jewel-rent-gateway' && !data.ok) {
+        throw new Error('Gateway redirected POST to GET. Please re-deploy your Apps Script Web App (Version: New version, Access: Anyone).');
+      }
+      return data;
+    } catch (err) {
+      lastErr = err;
+      if (err.needLogin || (err.message && (err.message.includes('404 (Not Found)') || err.message.includes('not whitelisted')))) {
+        throw err;
+      }
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, attempt * 800));
+      }
     }
-    if (!res.ok) throw new Error('Gateway HTTP ' + res.status);
-    const data = await res.json().catch(() => ({ ok: false, error: 'Bad gateway response' }));
-    if (data && data.service === 'jewel-rent-gateway' && !data.ok) {
-      throw new Error('Gateway redirected POST to GET. Please re-deploy your Apps Script Web App (Version: New version, Access: Anyone).');
-    }
-    return data;
-  } catch (err) {
-    if (err.message.includes('Failed to fetch')) {
-      throw new Error('Network error reaching Apps Script gateway. Check your internet connection or Gateway URL in Setup.');
-    }
-    throw err;
   }
+
+  if (lastErr && lastErr.name === 'AbortError') {
+    throw new Error('Gateway connection timed out. Apps Script may be cold-starting or network is slow. Please try again.');
+  }
+  if (lastErr && lastErr.message && lastErr.message.includes('Failed to fetch')) {
+    throw new Error('Network error reaching Apps Script gateway. Check your internet connection or Gateway URL in Setup.');
+  }
+  throw lastErr || new Error('Gateway request failed after retries');
 }
 
 // Exchange a Google ID token for a signed session (whitelist enforced server-side).
@@ -4827,20 +4848,59 @@ function App() {
     setLoading(true);
     setLoadError('');
     try {
-      // Schema migration + reserve seeding only when the schema or sheet IDs changed.
       const sig = schemaSig();
       if (localStorage.getItem(SCHEMA_SIG_KEY) !== sig) {
         await initSheets();
         localStorage.setItem(SCHEMA_SIG_KEY, sig);
       }
-      // Two batched calls (one per spreadsheet) instead of one call per tab.
       const cfg = getConfig();
-      const [j, r] = await Promise.all([readAllSheets('jewel'), cfg.rentSheetId ? readAllSheets('rent') : {}]);
-      setData({
-        stock: j.Stock||[], reserves: j.Reserves||[], banks: j.Banks||[], entries: j.Entries||[],
-        lending: j.Lending||[], payments: j.Payments||[], reminders: j.Reminders||[], investments: j.Investments||[], investSchedule: j.InvestSchedule||[],
-        properties: r.Properties||[], tenants: r.Tenants||[], rent: r.Rent||[], maintenance: r.Maintenance||[], utilities: r.Utilities||[],
-      });
+      
+      // Use Promise.allSettled so if one DB hits a temporary network glitch, the other still loads cleanly!
+      const results = await Promise.allSettled([
+        readAllSheets('jewel'),
+        cfg.rentSheetId ? readAllSheets('rent') : Promise.resolve({})
+      ]);
+
+      const jRes = results[0];
+      const rRes = results[1];
+
+      let errors = [];
+
+      if (jRes.status === 'rejected') {
+        if (jRes.reason?.needLogin) { setGated(false); setLoadError('Session expired — please sign in with Google again.'); setLoading(false); return; }
+        errors.push(`Jewel DB: ${jRes.reason?.message || 'Failed to load'}`);
+      }
+
+      if (rRes.status === 'rejected') {
+        if (rRes.reason?.needLogin) { setGated(false); setLoadError('Session expired — please sign in with Google again.'); setLoading(false); return; }
+        errors.push(`Rent DB: ${rRes.reason?.message || 'Failed to load'}`);
+      }
+
+      const j = jRes.status === 'fulfilled' ? jRes.value : {};
+      const r = rRes.status === 'fulfilled' ? rRes.value : {};
+
+      // Keep previously loaded data for a DB if its refresh failed temporarily
+      setData(prev => ({
+        stock: j.Stock || (jRes.status === 'fulfilled' ? [] : prev.stock),
+        reserves: j.Reserves || (jRes.status === 'fulfilled' ? [] : prev.reserves),
+        banks: j.Banks || (jRes.status === 'fulfilled' ? [] : prev.banks),
+        entries: j.Entries || (jRes.status === 'fulfilled' ? [] : prev.entries),
+        lending: j.Lending || (jRes.status === 'fulfilled' ? [] : prev.lending),
+        payments: j.Payments || (jRes.status === 'fulfilled' ? [] : prev.payments),
+        reminders: j.Reminders || (jRes.status === 'fulfilled' ? [] : prev.reminders),
+        investments: j.Investments || (jRes.status === 'fulfilled' ? [] : prev.investments),
+        investSchedule: j.InvestSchedule || (jRes.status === 'fulfilled' ? [] : prev.investSchedule),
+        properties: r.Properties || (rRes.status === 'fulfilled' ? [] : prev.properties),
+        tenants: r.Tenants || (rRes.status === 'fulfilled' ? [] : prev.tenants),
+        rent: r.Rent || (rRes.status === 'fulfilled' ? [] : prev.rent),
+        maintenance: r.Maintenance || (rRes.status === 'fulfilled' ? [] : prev.maintenance),
+        utilities: r.Utilities || (rRes.status === 'fulfilled' ? [] : prev.utilities),
+      }));
+
+      if (errors.length > 0) {
+        setLoadError(errors.join(' | '));
+      }
+
       setAuthed(true);
     } catch (e) {
       if (e.needLogin) { setGated(false); setLoadError('Session expired — please sign in with Google again.'); }
@@ -4956,9 +5016,12 @@ function App() {
       )}
 
       {loadError && (
-        <div style={{background:'var(--red-light)',border:'1px solid rgba(239,68,68,.3)',padding:'10px 20px',fontSize:13,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{background:'rgba(245,158,11,.12)',border:'1px solid rgba(245,158,11,.3)',padding:'10px 20px',fontSize:13,color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
           <span>⚠️ {loadError}</span>
-          <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button className="btn btn-primary btn-sm" onClick={loadData} disabled={loading}>{loading ? <span className="spinner"/> : '↻ Retry Refresh'}</button>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setLoadError('')}>Dismiss</button>
+          </div>
         </div>
       )}
 
