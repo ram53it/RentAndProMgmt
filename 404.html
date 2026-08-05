@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Page Not Found - RentAndGoldMgmt</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💠</text></svg>"/>
+  <script>
+    // Smart redirect for extensionless URLs on GitHub Pages (e.g. /app -> /app.html, /rent -> /rent.html)
+    (function() {
+      const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
+      const routes = {
+        '/app': '/app.html',
+        '/rent': '/rent.html',
+        '/jewel': '/jewel.html',
+        '/privacy': '/privacy.html',
+        '/terms': '/terms.html'
+      };
+      if (routes[path]) {
+        window.location.replace(routes[path] + window.location.search + window.location.hash);
+      }
+    })();
+  </script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1524; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; text-align: center; }
+    .card { background: #141d31; border: 1px solid #263552; border-radius: 16px; padding: 40px; max-width: 420px; width: 90%; }
+    h1 { font-size: 24px; margin-bottom: 12px; }
+    p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
+    a { display: inline-block; background: #2fbfa8; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
+    a:hover { background: #23a390; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:48px;margin-bottom:16px;">💠</div>
+    <h1>404 - Page Not Found</h1>
+    <p>The page you are looking for might have been moved or does not exist.</p>
+    <a href="/index.html">Go to Homepage →</a>
+  </div>
+</body>
+</html>

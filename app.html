@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Money Manager</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💠</text></svg>"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
@@ -424,13 +425,36 @@ const sessionValid = () => { const s = getSession(); return !!(s && s.token && s
 async function gatewayPost(payload) {
   const cfg = getConfig();
   if (!cfg.gatewayUrl || !cfg.gatewaySecret) throw new Error('Gateway not configured — open Setup.');
-  const res = await fetch(cfg.gatewayUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request → no CORS preflight
-    body: JSON.stringify({ secret: cfg.gatewaySecret, ...payload }),
-  });
-  if (!res.ok) throw new Error('Gateway HTTP ' + res.status);
-  return res.json().catch(() => ({ ok: false, error: 'Bad gateway response' }));
+  try {
+    const res = await fetch(cfg.gatewayUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request → no CORS preflight
+      body: JSON.stringify({ secret: cfg.gatewaySecret, ...payload }),
+      redirect: 'follow',
+    });
+    if (res.status === 404) {
+      throw new Error(
+        'Apps Script Gateway returned 404 (Not Found).\n\n' +
+        'This occurs when the Google Apps Script Web App deployment version expired or access permissions changed.\n\n' +
+        'How to fix:\n' +
+        '1. Open Google Sheets → Extensions → Apps Script.\n' +
+        '2. Click Deploy → Manage deployments.\n' +
+        '3. Click Edit (pencil icon), select Version: "New version", ensure Who has access is set to "Anyone", and click Deploy.\n' +
+        '4. Copy the /exec URL and save it in Setup.'
+      );
+    }
+    if (!res.ok) throw new Error('Gateway HTTP ' + res.status);
+    const data = await res.json().catch(() => ({ ok: false, error: 'Bad gateway response' }));
+    if (data && data.service === 'jewel-rent-gateway' && !data.ok) {
+      throw new Error('Gateway redirected POST to GET. Please re-deploy your Apps Script Web App (Version: New version, Access: Anyone).');
+    }
+    return data;
+  } catch (err) {
+    if (err.message.includes('Failed to fetch')) {
+      throw new Error('Network error reaching Apps Script gateway. Check your internet connection or Gateway URL in Setup.');
+    }
+    throw err;
+  }
 }
 
 // Exchange a Google ID token for a signed session (whitelist enforced server-side).
