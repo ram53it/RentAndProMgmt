@@ -2523,7 +2523,9 @@ function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
     try {
       const payId = uid('P');
       await appendRow('Payments', rowValues('Payments', { ID:payId, Date:pay.date, 'Ref Type':'Investment', 'Ref ID':inv.ID, Person:inv.Vendor||inv.Name, Mode:'Bank', Amount:amt, 'Weight Grams':'', Notes:pay.notes }));
-      await addEntry(inv.ID, pay.date, { reserve:pay.reserve, direction:'In', qty:amt, value:amt,
+      // Own Txn ID (the payment id) so each repayment is its own row on the
+      // Transactions page instead of folding into the funding transaction.
+      await addEntry(payId, pay.date, { reserve:pay.reserve, direction:'In', qty:amt, value:amt,
         counterparty:inv.Vendor||inv.Name, category:'Investment Return', ref:payId, notes:`${pay.isFinal?'Final settlement':'Repayment'} — ${inv.Name}` });
       // Advance the schedule, or close out on final settlement.
       const upd = { ...inv };
@@ -2628,7 +2630,7 @@ function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
               if (rowEdit.mode==='receive') {
                 const payId = uid('P');
                 await appendRow('Payments', rowValues('Payments', { ID:payId, Date:rowEdit.date, 'Ref Type':'Investment', 'Ref ID':inv.ID, Person:inv.Vendor||inv.Name, Mode:'Bank', Amount:amt, 'Weight Grams':'', Notes:'Scheduled repayment' }));
-                await addEntry(inv.ID, rowEdit.date, { reserve:rowEdit.reserve, direction:'In', qty:amt, value:amt,
+                await addEntry(payId, rowEdit.date, { reserve:rowEdit.reserve, direction:'In', qty:amt, value:amt,
                   counterparty:inv.Vendor||inv.Name, category:'Investment Return', ref:s.ID, notes:`Repayment — ${inv.Name}` });
                 await updateRow('InvestSchedule', s._row, rowValues('InvestSchedule', { ...s, Amount:amt, Status:'Received', 'Received Date':rowEdit.date, Reserve:rowEdit.reserve }));
                 await syncNext(remaining(s.ID));
