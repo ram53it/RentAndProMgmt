@@ -4153,6 +4153,20 @@ function Construction({ data, derived, onRefresh }) {
 
   const cashNames = (derived?.reserves || []).filter(r => r.kind === 'Cash').map(r => r.name);
 
+  // The dedicated construction pot. Everything on this page is measured against
+  // it — not the whole cash+bank pile — so "how much did we put in, how much is
+  // gone, how much is left" stays obvious. Any later top-up is just another
+  // In entry, so it lands in "added" automatically.
+  const consRes = (derived?.reserves || []).find(r => /construction/i.test(r.name || ''));
+  const consMoves = consRes ? data.entries.filter(e => e.Reserve === consRes.name) : [];
+  const consIn = consMoves.filter(e => e.Direction === 'In');
+  const consOut = consMoves.filter(e => e.Direction !== 'In');
+  const consAdded = (consRes ? num(consRes.opening) : 0) + consIn.reduce((s, e) => s + num(e.Qty), 0);
+  const consSpent = consOut.reduce((s, e) => s + num(e.Qty), 0);
+  const consRemaining = consAdded - consSpent;
+  const consUsedPct = consAdded > 0 ? Math.round(consSpent / consAdded * 100) : 0;
+  const consBuildSpent = consOut.filter(e => e.Category === 'Construction').reduce((s, e) => s + num(e.Qty), 0);
+
   const landProps = data.properties.filter(p => (p.Type || '').toLowerCase() === 'land');
   const otherProps = data.properties.filter(p => (p.Type || '').toLowerCase() !== 'land');
   const allConstructionProps = [...landProps, ...otherProps];
@@ -4168,7 +4182,7 @@ function Construction({ data, derived, onRefresh }) {
     date: todayStr(),
     propertyId: landProps.length > 0 ? landProps[0].ID : (allConstructionProps[0]?.ID || ''),
     category: 'Labor & Wages',
-    reserve: cashNames[0] || 'Cash',
+    reserve: (consRes && consRes.name) || cashNames[0] || 'Cash',
     amount: '',
     vendor: '',
     notes: ''
@@ -4259,9 +4273,40 @@ function Construction({ data, derived, onRefresh }) {
 
   return (
     <div>
+      {consRes ? (
+        <div className="stats-row">
+          <div className="stat-card">
+            <div className="stat-label">🏦 {consRes.name} — current</div>
+            <div className="stat-value green">{fmtINR(consRes.balance)}</div>
+            <div className="stat-sub">balance in the construction pot right now</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">⬇️ Total added</div>
+            <div className="stat-value">{fmtINR(consAdded)}</div>
+            <div className="stat-sub">{num(consRes.opening) > 0 ? `opening ${fmtINR(consRes.opening)}` : 'no opening balance'}{consIn.length > 0 ? ` + ${consIn.length} top-up${consIn.length !== 1 ? 's' : ''}` : ''}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">🏗️ Total spent</div>
+            <div className="stat-value gold">{fmtINR(consSpent)}</div>
+            <div className="stat-sub">{consBuildSpent > 0 ? `${fmtINR(consBuildSpent)} on construction` : 'nothing spent yet'}{consUsedPct > 0 ? ` · ${consUsedPct}% used` : ''}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">✅ Remaining</div>
+            <div className="stat-value" style={{color: consRemaining > 0 ? 'var(--green)' : 'var(--red)'}}>{fmtINR(consRemaining)}</div>
+            <div className="stat-sub">{consAdded > 0 ? `${100 - consUsedPct}% of ${fmtINR(consAdded)} left` : 'add money to this reserve to start'}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="card" style={{marginBottom: 14}}>
+          <div style={{fontSize: 13, color: 'var(--text-secondary)'}}>
+            💡 No <b>Construction Reserve</b> found. Add an account with "Construction" in its name on the Reserves page — this page will then show what you put in, what you spent and what is left, instead of your whole cash &amp; bank balance.
+          </div>
+        </div>
+      )}
+
       <div className="stats-row">
         <div className="stat-card">
-          <div className="stat-label">🏗️ Total Construction Spent</div>
+          <div className="stat-label">🏗️ Construction logged (all sources)</div>
           <div className="stat-value gold">{fmtINR(totalSpent)}</div>
           <div className="stat-sub">{constructionEntries.length} logged expense items</div>
         </div>
@@ -4269,11 +4314,6 @@ function Construction({ data, derived, onRefresh }) {
           <div className="stat-label">📍 Land / Development Properties</div>
           <div className="stat-value green">{landProps.length}</div>
           <div className="stat-sub">{data.properties.length} total properties registered</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">💵 Available Reserves (Cash/Bank)</div>
-          <div className="stat-value green">{fmtINR(derived.cashBal + derived.bankTotal)}</div>
-          <div className="stat-sub">{cashNames.length} accounts available</div>
         </div>
       </div>
 
