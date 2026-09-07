@@ -374,7 +374,7 @@ const HEADERS = {
   Lending:     ['ID','Date','Person','Phone','Type','Reserve','Weight Grams','Amount','Interest %','Interest Type','Due Date','Status','Notes'],
   Payments:    ['ID','Date','Ref Type','Ref ID','Person','Mode','Amount','Weight Grams','Notes'],
   Reminders:   ['ID','Created','Due Date','Title','Linked Type','Linked ID','Status','Notes'],
-  Investments: ['ID','Name','Type','Vendor','Reserve','Principal','Rate %','Start Date','Maturity Date','Repayment Type','Monthly Repayment','Next Payment Date','Next Payment Value','Final Settlement','Status','Notes','Repayment Mode'],
+  Investments: ['ID','Name','Type','Vendor','Reserve','Principal','Rate %','Start Date','Maturity Date','Repayment Type','Monthly Repayment','Next Payment Date','Next Payment Value','Final Settlement','Status','Notes','Repayment Mode','Units'],
   InvestSchedule: ['ID','Investment ID','Due Date','Amount','Status','Received Date','Reserve','Notes'],
   // Rent sheet tabs
   Properties:  ['ID','Name','Address','Type','Rent Amount','Occupancy','Notes','Created'],
@@ -2378,10 +2378,15 @@ function investStats(data) {
 
 function Investments({ data, derived, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
+  const [fType, setFType] = useState('all');
+  const [fRes, setFRes] = useState('all');
+  const [fVendor, setFVendor] = useState('all');
+  const [fStatus, setFStatus] = useState('all');
+  const [q, setQ] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
   const cashNames = derived.reserves.filter(r => r.kind==='Cash').map(r => r.name);
-  const blank = { name:'', type:'FD', vendor:'', reserve: cashNames[0]||'Cash', principal:'', rate:'', start: todayStr(), maturity:'', repayType:'At Maturity', repayMode:'Interest', monthly:'', nextDate:'', nextValue:'', final:'', notes:'' };
+  const blank = { name:'', type:'FD', vendor:'', reserve: cashNames[0]||'Cash', principal:'', rate:'', start: todayStr(), maturity:'', repayType:'At Maturity', repayMode:'Interest', monthly:'', nextDate:'', nextValue:'', final:'', units:'', notes:'' };
   const [form, setForm] = useState(blank);
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   const vendors = [...new Set(['Stable Money','Wint Wealth', ...data.investments.map(i=>(i.Vendor||'').trim()).filter(Boolean)])];
@@ -2398,6 +2403,7 @@ function Investments({ data, derived, onRefresh }) {
         'Repayment Type':form.repayType, 'Repayment Mode':form.repayMode, 'Monthly Repayment': form.repayType!=='At Maturity'?num(form.monthly):'',
         'Next Payment Date':form.nextDate, 'Next Payment Value':num(form.nextValue)||'',
         'Final Settlement':num(form.final)||'', Status:status, Notes:form.notes,
+        Units: form.units!=='' ? num(form.units) : '',
       });
       if (editing) {
         await updateRow('Investments', editing._row, rowObj(editing.ID, editing.Status||'Active'));
@@ -2426,13 +2432,29 @@ function Investments({ data, derived, onRefresh }) {
     setForm({ name:i.Name||'', type:i.Type||'FD', vendor:i.Vendor||'', reserve:i.Reserve||'Cash', principal:i.Principal||'',
       rate:i['Rate %']||'', start:dateKey(i['Start Date'])||todayStr(), maturity:dateKey(i['Maturity Date'])||'',
       repayType:i['Repayment Type']||'At Maturity', repayMode:i['Repayment Mode']||'Interest', monthly:i['Monthly Repayment']||'', nextDate:dateKey(i['Next Payment Date'])||'',
-      nextValue:i['Next Payment Value']||'', final:i['Final Settlement']||'', notes:i.Notes||'' });
+      nextValue:i['Next Payment Value']||'', final:i['Final Settlement']||'', units:i.Units||'', notes:i.Notes||'' });
     setEditing(i); setShowForm(true);
   };
 
   const list = [...data.investments].sort((a,b) => dateKey(b['Start Date']).localeCompare(dateKey(a['Start Date'])));
-  const activeList = list.filter(i => (i.Status||'Active') !== 'Closed');
-  const closedList = list.filter(i => (i.Status||'Active') === 'Closed');
+
+  // Filters — options come from what is actually in the sheet, so user-typed
+  // vendors and any new bank/account show up on their own.
+  const opts = (key) => [...new Set(list.map(i => (i[key]||'').trim()).filter(Boolean))].sort();
+  const typeOpts = opts('Type'), resOpts = opts('Reserve'), vendorOpts = opts('Vendor');
+  const ql = q.trim().toLowerCase();
+  const filtered = list.filter(i =>
+    (fType==='all'   || (i.Type||'').trim()===fType) &&
+    (fRes==='all'    || (i.Reserve||'').trim()===fRes) &&
+    (fVendor==='all' || (i.Vendor||'').trim()===fVendor) &&
+    (fStatus==='all' || ((i.Status||'Active')==='Closed' ? 'Closed' : 'Active')===fStatus) &&
+    (!ql || [i.Name,i.Vendor,i.Type,i.Reserve,i.Notes].join(' ').toLowerCase().includes(ql))
+  );
+  const anyFilter = fType!=='all' || fRes!=='all' || fVendor!=='all' || fStatus!=='all' || !!ql;
+  const clearFilters = () => { setFType('all'); setFRes('all'); setFVendor('all'); setFStatus('all'); setQ(''); };
+  const shownPrincipal = filtered.reduce((t,i) => t+num(i.Principal), 0);
+  const activeList = filtered.filter(i => (i.Status||'Active') !== 'Closed');
+  const closedList = filtered.filter(i => (i.Status||'Active') === 'Closed');
 
   return (
     <div>
@@ -2444,6 +2466,32 @@ function Investments({ data, derived, onRefresh }) {
           <div className="stat-sub">{st.upcoming[0] ? `${st.upcoming[0].Name} · ${fmtINR(st.upcoming[0]['Next Payment Value']||st.upcoming[0]['Monthly Repayment'])}` : 'nothing scheduled'}</div></div>
         <div className="stat-card"><div className="stat-label">⏳ Maturing in 60 days</div><div className="stat-value" style={{color:st.maturing.length>0?'var(--gold)':'var(--green)'}}>{st.maturing.length}</div><div className="stat-sub">{st.maturing[0]?`${st.maturing[0].Name} on ${dateKey(st.maturing[0]['Maturity Date'])}`:'none'}</div></div>
       </div>
+
+      {list.length>0 && <div className="card" style={{marginBottom:14}}>
+        <div className="section-row" style={{marginBottom:10}}>
+          <div className="card-title" style={{marginBottom:0}}>🔎 Filter</div>
+          {anyFilter && <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Clear filters</button>}
+        </div>
+        <div className="form-grid">
+          <div className="form-group"><label>Type</label>
+            <select value={fType} onChange={e=>setFType(e.target.value)}><option value="all">All types</option>{typeOpts.map(t=><option key={t} value={t}>{t}</option>)}</select>
+          </div>
+          <div className="form-group"><label>Account (funded from)</label>
+            <select value={fRes} onChange={e=>setFRes(e.target.value)}><option value="all">All accounts</option>{resOpts.map(r=><option key={r} value={r}>{r}</option>)}</select>
+          </div>
+          <div className="form-group"><label>Vendor</label>
+            <select value={fVendor} onChange={e=>setFVendor(e.target.value)}><option value="all">All vendors</option>{vendorOpts.map(v=><option key={v} value={v}>{v}</option>)}</select>
+          </div>
+          <div className="form-group"><label>Status</label>
+            <select value={fStatus} onChange={e=>setFStatus(e.target.value)}><option value="all">Active + closed</option><option value="Active">Active only</option><option value="Closed">Closed / matured</option></select>
+          </div>
+          <div className="form-group"><label>Search</label><input placeholder="name, vendor, note…" value={q} onChange={e=>setQ(e.target.value)}/></div>
+        </div>
+        <div style={{fontSize:12,color:'var(--text-muted)',marginTop:10,display:'flex',gap:14,flexWrap:'wrap'}}>
+          <span><b style={{color:'var(--text-primary)'}}>{filtered.length}</b> of {list.length} investment{list.length!==1?'s':''}</span>
+          <span>Principal shown: <b className="mono" style={{color:'var(--gold)'}}>{fmtINR(shownPrincipal)}</b></span>
+        </div>
+      </div>}
 
       <div className="section-row">
         <h3>Investments</h3>
@@ -2463,6 +2511,10 @@ function Investments({ data, derived, onRefresh }) {
             <select value={form.reserve} onChange={e=>f('reserve',e.target.value)}>{cashNames.map(n=><option key={n} value={n}>{n}</option>)}</select>
           </div>
           <div className="form-group"><label>Principal (₹) *</label><input type="number" value={form.principal} onChange={e=>f('principal',e.target.value)}/></div>
+          <div className="form-group"><label>Units / Shares <span style={{color:'var(--text-muted)'}}>optional · decimals ok</span></label>
+            <input type="number" step="any" placeholder="e.g. 12.4567" value={form.units} onChange={e=>f('units',e.target.value)}/>
+            {num(form.units)>0 && num(form.principal)>0 && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>≈ {fmtINR(num(form.principal)/num(form.units))} per unit</div>}
+          </div>
           <div className="form-group"><label>Rate % (yearly)</label><input type="number" step="0.01" value={form.rate} onChange={e=>f('rate',e.target.value)}/></div>
           <div className="form-group"><label>Start Date</label><input type="date" value={form.start} onChange={e=>f('start',e.target.value)}/></div>
           <div className="form-group"><label>Maturity Date</label><input type="date" value={form.maturity} onChange={e=>f('maturity',e.target.value)}/></div>
@@ -2486,7 +2538,7 @@ function Investments({ data, derived, onRefresh }) {
         {!editing && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:8}}>Saving posts an Out entry from "{form.reserve}" for the principal — your reserve balance goes down by {fmtINR(num(form.principal))}.</div>}
       </div>}
 
-      {activeList.length===0 && closedList.length===0 ? <div className="card"><div className="empty"><p>No investments yet. Add your first bond, FD or RD.</p></div></div> : <>
+      {activeList.length===0 && closedList.length===0 ? <div className="card"><div className="empty"><p>{list.length===0 ? 'No investments yet. Add your first bond, FD or RD.' : 'No investments match these filters.'}</p></div></div> : <>
         {activeList.length>0 && <div className="gap-12" style={{marginBottom:16}}>{activeList.map(i=><InvestCard key={i.ID} inv={i} data={data} derived={derived} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>}
         {closedList.length>0 && <CollapsibleSection title={`✓ Closed / matured (${closedList.length})`}>
           <div className="gap-12">{closedList.map(i=><InvestCard key={i.ID} inv={i} data={data} derived={derived} onRefresh={onRefresh} onEdit={openEdit}/>)}</div>
@@ -2563,6 +2615,7 @@ function InvestCard({ inv, data, derived, onRefresh, onEdit }) {
           <span>Received so far: <b className="mono" style={{color:'var(--green)'}}>{fmtINR(received)}</b></span>
           <span>Repayment: <b>{inv['Repayment Type']||'—'}{inv['Repayment Mode']?` (${inv['Repayment Mode']})`:''}{(inv['Repayment Type']||'')!=='At Maturity' && num(inv['Monthly Repayment'])>0?` · ${fmtINR(inv['Monthly Repayment'])}/period`:''}</b></span>
           {num(inv['Final Settlement'])>0 && <span>Final settlement: <b className="mono">{fmtINR(inv['Final Settlement'])}</b></span>}
+          {num(inv.Units)>0 && <span>Units: <b className="mono">{num(inv.Units)}</b>{num(inv.Principal)>0?<span style={{color:'var(--text-muted)'}}> · {fmtINR(num(inv.Principal)/num(inv.Units))}/unit</span>:null}</span>}
           <span>Funded from: <b>{inv.Reserve||'—'}</b></span>
         </div>
         {payments.length>0 && <div className="table-wrap"><table>
