@@ -887,7 +887,7 @@ function InsightsHome({ data, derived, onNav }) {
   const rentRows = data.rent.filter(r => (r.Month||'').trim().toLowerCase() === monthName.toLowerCase() && String(r.Year).trim() === yearStr);
   // Match by Property ID (like the Rent page does — Tenant ID can be blank on
   // rows) and SUM all Paid/Partial rows, so installments count up correctly.
-  const rentStatus = activeTenants.map(t => {
+  const rentStatus = activeTenants.filter(t => rentDueFor(t, monthName, yearStr)).map(t => {
     const prop = data.properties.find(p => p.ID === t['Property ID']);
     const paidRows = rentRows.filter(r => r['Property ID'] === t['Property ID'] && (r.Status === 'Paid' || r.Status === 'Partial'));
     const paidAmt = paidRows.reduce((s,r) => s + num(r.Amount), 0);
@@ -992,7 +992,7 @@ function InsightsHome({ data, derived, onNav }) {
               <div className="card-title" style={{marginBottom:0}}>🏢 Rent Radar — {monthName}</div>
               <button className="btn btn-secondary btn-sm" onClick={()=>onNav('rent')}>Open Rent →</button>
             </div>
-            {rentStatus.length===0 ? <div className="empty"><p>No active tenants.</p></div> : <>
+            {rentStatus.length===0 ? <div className="empty"><p>{activeTenants.length ? `No rent due for ${monthName} — tenants moved in after it.` : 'No active tenants.'}</p></div> : <>
               <div style={{display:'flex',gap:16,marginBottom:12,fontSize:12}}>
                 <span style={{color:'var(--green)'}}>✓ Collected {fmtINR(rentCollected)}</span>
                 <span style={{color: rentPending.length?'var(--gold)':'var(--green)'}}>{rentPending.length ? `⏳ ${rentPending.length} pending` : 'All collected ✓'}</span>
@@ -2928,6 +2928,38 @@ Input address: ${JSON.stringify(address||'')}`;
 
 // ── RENT MODULE (copied from rent.html; wired to the rent sheet) ─────────────
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// ── Tenancy-aware rent helpers ───────────────────────────────────────────────
+// Rent is owed from the tenant's move-in month onward — never for the months
+// before they moved in — and a tenant's "last paid" only counts rows inside
+// their own tenancy, not the previous tenant's payments on the same property.
+const rentMonthIdx = (month, year) => Number(year) * 12 + MONTHS.indexOf(String(month || '').trim());
+function moveInIdx(t) {
+  const raw = String(t?.['Move In Date'] || '').trim();
+  if (!raw) return -Infinity;
+  const dmy = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/); // 01/09/2026 — Indian day/month order
+  const d = dmy ? `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}` : dateKey(raw);
+  const m = /^(\d{4})-(\d{2})/.exec(d);
+  return m ? Number(m[1]) * 12 + Number(m[2]) - 1 : -Infinity;
+}
+// Months a tenant is responsible for: move-in month → (for a vacated tenant)
+// the month before the next tenant on that property moved in.
+function tenancyWindow(t, tenants) {
+  const start = moveInIdx(t);
+  if ((t.Status || 'Active') === 'Active') return { start, end: Infinity };
+  const later = (tenants || []).filter(o => o !== t && o['Property ID'] === t['Property ID'])
+    .map(moveInIdx).filter(i => i > start);
+  return { start, end: later.length ? Math.min(...later) - 1 : Infinity };
+}
+const rentDueFor = (t, month, year) => !t || rentMonthIdx(month, year) >= moveInIdx(t);
+// Latest Paid row for a property, limited to `tenant`'s tenancy when given.
+function lastPaidRentFor(rentRows, propId, tenant, tenants) {
+  const w = tenant ? tenancyWindow(tenant, tenants) : { start: -Infinity, end: Infinity };
+  return rentRows.filter(r => r['Property ID'] === propId && r.Status === 'Paid')
+    .map(r => ({ r, i: rentMonthIdx(r.Month, r.Year) }))
+    .filter(x => x.i >= w.start && x.i <= w.end)
+    .sort((a, b) => b.i - a.i)[0]?.r;
+}
 const YEARS  = ['2022','2023','2024','2025','2026','2027'];
 function EditBtn({ onClick }) { return <button className="btn btn-secondary btn-sm" onClick={onClick} title="Edit">✏️</button>; }
 function SaveBtn({ onClick, saving }) { return <button className="btn btn-primary btn-sm" onClick={onClick} disabled={saving}>{saving?'…':'Save'}</button>; }
@@ -3061,7 +3093,7 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
   const u = data.utilities.find(u => u['Property ID'] === p.ID) || {};
   const tenant  = data.tenants.find(t => t['Property ID'] === p.ID && t.Status === 'Active');
   const allTens = data.tenants.filter(t => t['Property ID'] === p.ID);
-  const lastPaidRent = data.rent.filter(r=>r['Property ID']===p.ID&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+  const lastPaidRent = lastPaidRentFor(data.rent, p.ID, tenant, data.tenants);
   const occColor = p.Occupancy==='Vacant'?'badge-gold':p.Occupancy==='NotApplicable'||p.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
   const occIcon  = p.Occupancy==='Vacant'?'🔓':p.Occupancy==='OwnUsage'?'🏡':p.Occupancy==='NotApplicable'?'📋':'🏠';
   return (
@@ -3082,7 +3114,7 @@ function PropCard({ p, data, onEdit, onGoToRent }) {
             <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>{tenant?tenant.Name:'No active tenant'}</div>
             {lastPaidRent
               ? <div style={{fontSize:11,marginTop:2}}>Last paid: <span style={{color:'var(--green)',fontWeight:600}}>{lastPaidRent.Month} {lastPaidRent.Year}</span></div>
-              : <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>No rent recorded</div>}
+              : <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{tenant ? 'No rent paid yet by this tenant' : 'No rent recorded'}</div>}
           </div>
           <span className={`badge ${occColor} prop-occ-badge-header`}>{p.Occupancy||'Occupied'}</span>
           <EditBtn onClick={e=>{e.stopPropagation();onEdit(p);}}/>
@@ -3285,7 +3317,7 @@ function Tenants({ data, derived, onRefresh }) {
           <thead><tr><th>Name</th><th>Property</th><th>Phone</th><th>Advance</th><th>Move-in</th><th>Last Rent Revision</th><th>Last Rent Paid</th><th>Status</th><th></th></tr></thead>
           <tbody>{filtered.map(t => {
             const prop = data.properties.find(p => p.ID === t['Property ID']);
-            const lastPaidRent = data.rent.filter(r=>r['Property ID']===t['Property ID']&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            const lastPaidRent = lastPaidRentFor(data.rent, t['Property ID'], t, data.tenants);
             return (<tr key={t.ID}>
               <td className="name">{t.Name}</td>
               <td>{prop?prop.Name:t['Property ID']}</td>
@@ -3655,10 +3687,11 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
     .filter(p=>p.Occupancy!=='Vacant'&&p.Occupancy!=='NotApplicable'&&p.Occupancy!=='OwnUsage'&&(p.Type||'').toLowerCase()!=='land')
     .map(p=>{
       const due = Number(p['Rent Amount']||0), got = paidSums[p.ID]||0;
-      return { p, due, got, pending: Math.max(0, due-got),
-        tenant: data.tenants.find(t=>t['Property ID']===p.ID&&t.Status==='Active'),
-        lastPaid: data.rent.filter(r=>r['Property ID']===p.ID&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0] };
+      const tenant = data.tenants.find(t=>t['Property ID']===p.ID&&t.Status==='Active');
+      return { p, due, got, pending: Math.max(0, due-got), tenant,
+        lastPaid: lastPaidRentFor(data.rent, p.ID, tenant, data.tenants) };
     })
+    .filter(x => rentDueFor(x.tenant, filterMonth, filterYear))
     .filter(x => x.due>0 ? x.got < x.due - 0.5 : x.got <= 0);
   const totalPending = notPaid.reduce((s,x)=>s+(x.pending||x.due),0);
 
@@ -3946,7 +3979,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
             {data.properties.filter(p=>(p.Type||'').toLowerCase()!=='land').map(p=><option key={p.ID} value={p.ID}>{p.Name}</option>)}
           </select>
           {filterProp && (()=>{
-            const _lp = data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').sort((a,b)=>{const ya=Number(a.Year),yb=Number(b.Year);if(ya!==yb)return yb-ya;return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);})[0];
+            const _lp = lastPaidRentFor(data.rent, filterProp, data.tenants.find(t=>t['Property ID']===filterProp&&t.Status==='Active'), data.tenants);
             return <div style={{marginLeft:'auto',display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
               {_lp && <div style={{fontSize:12,color:'var(--text-muted)'}}>Last paid: <span style={{color:'var(--gold)',fontWeight:600}}>{_lp.Month} {_lp.Year}</span></div>}
               <div style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--green)'}}>Total collected: {fmtINR(data.rent.filter(r=>r['Property ID']===filterProp&&r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0))}</div>
@@ -3965,7 +3998,7 @@ function Rent({ data, derived, onRefresh, initialPropId, onClearTarget }) {
             return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
           });
           const totalPaid  = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
-          const lastPaid   = propRent.find(r=>r.Status==='Paid');
+          const lastPaid   = lastPaidRentFor(data.rent, filterProp, tenant, data.tenants);
           return (<>
             {/* Property summary card */}
             <div className="card" style={{marginBottom:16}}>
@@ -4050,7 +4083,7 @@ function PropertyRentCard({ prop, data, onRecordRent, onEditRent, onReceipt }) {
     return MONTHS.indexOf(b.Month)-MONTHS.indexOf(a.Month);
   });
   const totalPaid = propRent.filter(r=>r.Status==='Paid').reduce((s,r)=>s+Number(r.Amount||0),0);
-  const lastPaid  = propRent.find(r=>r.Status==='Paid');
+  const lastPaid  = lastPaidRentFor(data.rent, prop.ID, tenant, data.tenants);
   const occColor  = prop.Occupancy==='Vacant'?'badge-gold':prop.Occupancy==='NotApplicable'||prop.Occupancy==='OwnUsage'?'badge-blue':'badge-green';
   const occIcon   = prop.Occupancy==='Vacant'?'🔓':prop.Occupancy==='OwnUsage'?'🏡':prop.Occupancy==='NotApplicable'?'📋':'🏠';
 
