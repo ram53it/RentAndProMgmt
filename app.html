@@ -1673,6 +1673,15 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
 
       <div className="gap-12">{derived.reserves.map(r => {
         const entries = data.entries.filter(e => e.Reserve===r.name).sort((a,b)=>(b.Date||'').localeCompare(a.Date||'') || (b.ID||'').localeCompare(a.ID||''));
+        // Running balance after each movement — walked oldest→newest from the
+        // opening balance, so the newest row always lands on today's balance.
+        const balAfter = new Map();
+        let _run = r.opening;
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const e = entries[i];
+          _run += (e.Direction === 'In' ? 1 : -1) * num(e.Qty);
+          balAfter.set(e, Math.round(_run * 1000) / 1000);
+        }
         const isOpen = openRes===r.name;
         const displayedEntries = showAllTxns ? entries : entries.slice(0, 20);
         return (
@@ -1713,12 +1722,13 @@ function ReservesPage({ data, derived, onRefresh, onNew }) {
             </div>
             {entries.length===0 ? <div style={{fontSize:12,color:'var(--text-muted)'}}>No movements yet.</div> : <>
             <div className="table-wrap"><table>
-              <thead><tr><th>Date</th><th>Dir</th><th>Qty</th><th>Touch</th><th>Value</th><th>Type</th><th>Who</th><th>Notes</th></tr></thead>
+              <thead><tr><th>Date</th><th>Dir</th><th>Qty</th><th>Balance after</th><th>Touch</th><th>Value</th><th>Type</th><th>Who</th><th>Notes</th></tr></thead>
               <tbody>{displayedEntries.map(e=>(
                 <tr key={e.ID}>
                   <td className="mono">{e.Date}</td>
                   <td><span className={`badge ${e.Direction==='In'?'badge-green':'badge-red'}`}>{e.Direction==='In'?'↓ In':'↑ Out'}</span></td>
                   <td className="mono">{fmtReserve(r.name, e.Qty)}</td>
+                  <td className="mono" style={{fontWeight:600,color:balAfter.get(e)<0?'var(--red)':'var(--text-primary)'}}>{fmtReserve(r.name, balAfter.get(e))}</td>
                   <td className="mono" style={{color:'var(--text-muted)'}}>{e.Touch?`${e.Touch}${num(e.Margin)?'+'+e.Margin:''}`:'—'}</td>
                   <td className="mono">{e.Value?fmtINR(e.Value):'—'}</td>
                   <td><span className="badge badge-secondary" style={{fontSize:11,textTransform:'capitalize'}}>{e.Category||'—'}</span></td>
